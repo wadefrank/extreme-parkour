@@ -40,6 +40,7 @@ import torch
 import wandb
 
 def train(args):
+    # headless 无头模式（headless = True时，不显示渲染窗口）
     args.headless = True
     log_pth = LEGGED_GYM_ROOT_DIR + "/logs/{}/".format(args.proj_name) + args.exptid
     try:
