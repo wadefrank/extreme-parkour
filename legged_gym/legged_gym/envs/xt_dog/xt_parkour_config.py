@@ -77,17 +77,17 @@ class XTDogParkourCfg( LeggedRobotCfg ):
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.3
-        class scales( LeggedRobotCfg.rewards.scales ):
-            torques = -0.00025
-            dof_pos_limits = -10.0
-            tracking_lin_vel = 2.0
-            tracking_ang_vel = 1.0
-            orientation = -0.1
-            torques = -0.0001
-            dof_vel = -0.01
-            base_height = -0.1
-            feet_air_time = 1.5
-            action_rate = -0.02
+        # class scales( LeggedRobotCfg.rewards.scales ):
+        #     torques = -0.00025
+        #     dof_pos_limits = -10.0
+        #     tracking_lin_vel = 2.0
+        #     tracking_ang_vel = 1.0
+        #     orientation = -0.1
+        #     torques = -0.0001
+        #     dof_vel = -0.01
+        #     base_height = -0.1
+        #     feet_air_time = 1.5
+        #     action_rate = -0.02
 
 class XTDogParkourCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
