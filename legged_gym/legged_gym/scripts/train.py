@@ -60,7 +60,7 @@ def train(args):
 
     # headless 无头模式（headless = True时，不显示图形界面）
     # 启用无头模式（不显示图形界面，适合服务器环境运行）
-    args.headless = True
+    # args.headless = True
 
     # 设置日志目录路径
     log_pth = LEGGED_GYM_ROOT_DIR + "/logs/{}/".format(args.proj_name) + args.exptid
