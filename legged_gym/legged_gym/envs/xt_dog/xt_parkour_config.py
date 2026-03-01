@@ -31,8 +31,6 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 
 class XTDogParkourCfg( LeggedRobotCfg ):
-    class env( LeggedRobotCfg.env) :
-        num_envs = 1          # 并行训练的环境数量，影响训练速度和GPU内存占用
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.3] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
