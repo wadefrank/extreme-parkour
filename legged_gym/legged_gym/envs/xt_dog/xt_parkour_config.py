@@ -56,8 +56,8 @@ class XTDogParkourCfg( LeggedRobotCfg ):
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
-        stiffness = {'joint': 60.0}  # [N*m/rad]
-        damping = {'joint': 1.0}     # [N*m*s/rad]
+        stiffness = {'joint': 80.0}  # [N*m/rad]
+        damping = {'joint': 2.0}     # [N*m*s/rad]
         # action scale: target angle = actionScale * action + defaultAngle
         action_scale = 0.15
         # decimation: Number of control action updates @ sim DT per policy DT
