@@ -64,7 +64,7 @@ class XTDogParkourCfg( LeggedRobotCfg ):
         # 提高action_scale以获得足够的力矩-体重比
         # 最大力矩 = 80 * 0.25 * 1.2 = 24 N·m (URDF限制40 N·m)
         # 力矩体重比 = 24/(28*9.81) = 0.087 (接近A1的0.102)
-        action_scale = 0.25
+        action_scale = 0.3
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
 
