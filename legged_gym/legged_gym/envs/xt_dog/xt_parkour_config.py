@@ -32,7 +32,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class XTDogParkourCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.3] # x,y,z [m] 提高初始高度，避免脚部嵌入地面
+        pos = [0.0, 0.0, 0.42] # x,y,z [m] 略高于自然站立高度(~0.39m)，让机器人自然落地
         default_joint_angles = { # = target angles [rad] when action = 0.0
             # hip关节（髋关节），负责腿部的横向运动
             'FL_hip_joint': 0.1,   # [rad]
@@ -60,11 +60,9 @@ class XTDogParkourCfg( LeggedRobotCfg ):
         # XTDog ~28kg，约为A1(12kg)的2.3倍
         # 保持较高刚度以支撑体重，阻尼接近临界阻尼
         stiffness = {'joint': 80.0}  # [N*m/rad]
-        damping = {'joint': 2.0}     # [N*m*s/rad]
-        # 提高action_scale以获得足够的力矩-体重比
+        damping = {'joint': 4.0}     # [N*m*s/rad] 提高阻尼，28kg需要更强阻尼抑制振荡
         # 最大力矩 = 80 * 0.25 * 1.2 = 24 N·m (URDF限制40 N·m)
-        # 力矩体重比 = 24/(28*9.81) = 0.087 (接近A1的0.102)
-        action_scale = 0.3
+        action_scale = 0.25
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
 
@@ -79,7 +77,16 @@ class XTDogParkourCfg( LeggedRobotCfg ):
 
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
-        base_height_target = 0.3
+        base_height_target = 0.35
+        class scales( LeggedRobotCfg.rewards.scales ):
+            # 加强关节误差惩罚，阻止腿部偏离默认姿态
+            dof_error = -0.15
+            # 加强hip惩罚，防止髋关节偏移过大
+            hip_pos = -1.0
+            # 加强动作平滑度惩罚
+            action_rate = -0.2
+            # 足底接触时间奖励，鼓励四腿交替着地
+            feet_air_time = 1.0
 
 class XTDogParkourCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):

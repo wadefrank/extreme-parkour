@@ -247,6 +247,10 @@ class LeggedRobot(BaseTask):
         contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
         self.contact_filt = torch.logical_or(contact, self.last_contacts) 
         self.last_contacts = contact
+
+        # 更新 feet_air_time：不接触地面时累加，着地时重置
+        self.feet_air_time += self.dt
+        self.feet_air_time *= ~self.contact_filt  # 着地的脚重置为0
         
         # self._update_jump_schedule()
         self._update_goals()
@@ -1269,6 +1273,14 @@ class LeggedRobot(BaseTask):
         dof_error = torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1)
         return dof_error
     
+    def _reward_feet_air_time(self):
+        # 奖励四条腿交替接触地面，鼓励对称步态
+        # 当某只脚刚着地(contact_filt为True)且air_time在合理范围内(~0.2s)时给予奖励
+        # 惩罚air_time过长的腿（说明一直抬着不着地）
+        first_contact = (self.feet_air_time > 0) * self.contact_filt
+        rew = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1)
+        return rew
+
     def _reward_feet_stumble(self):
         # Penalize feet hitting vertical surfaces
         rew = torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\

@@ -44,6 +44,10 @@ python save_jit.py --exptid xxx-xx
 
 Checkpoints and logs are saved to `legged_gym/logs/parkour_new/{exptid}/`.
 
+**Exptid format**: `XXX-XX-LABEL` — first 3 chars (`XXX`) become the WandB group ID. Don't reuse the `XXX-XX` prefix across runs (auto-matching uses first 6 chars for `--resumeid`).
+
+**WandB**: Entity is hardcoded to `wadefrank_2026` in `train.py` line 91 — change this for other users.
+
 **Key flags:**
 - `--task`: Robot name (`a1`, `go1`, `xt_dog`); defaults to `a1`
 - `--resume` / `--resumeid xxx-xx`: Resume training from a checkpoint
@@ -108,9 +112,21 @@ The observation vector is constructed in `compute_observations()`:
 
 Asymmetric training: privileged info is available to the critic and estimator during training but not at deployment.
 
+### Reward System
+
+Reward scales (defined in each robot's config `rewards.scales`) are multiplied by `dt` (5ms) during setup. When `only_positive_rewards=True` (default), the total episode reward is clipped at zero.
+
+Key reward terms (A1 defaults): `tracking_goal_vel` (1.5), `tracking_yaw` (0.5), `collision` (-10), `orientation` (-1.0), `lin_vel_z` (-1.0), `hip_pos` (-0.5), `dof_error` (-0.04), `action_rate` (-0.1). Reward functions are methods named `_reward_<name>` on `LeggedRobot`.
+
+### Terrain Curriculum
+
+Grid: 10 rows (difficulty 0–9) × 40 columns (terrain types). Each env advances to harder difficulty when it covers >80% of commanded distance; drops down when <40%. At max level, randomly resets to a lower level.
+
 ### Training Pipeline
-1. **Base policy**: proprioceptive-only; trains motor skills on procedural terrain curriculum (10 difficulty levels)
-2. **Distillation**: adds depth camera (58×87); vision encoder distills from base policy's privileged state estimations
+1. **Base policy**: proprioceptive-only; trains motor skills on procedural terrain curriculum
+2. **Distillation**: adds depth camera (58×87); vision encoder distills from base policy's privileged state estimations. Camera mode uses fewer envs (`camera_num_envs`) and smaller terrain grids, with terrain proportions shifted heavily toward parkour tasks.
+
+**Action delay**: Off during base training (`action_curr_step_scratch=[0,1]`), enabled 1-step delay during distillation (`action_curr_step=[1,1]`). Delay updates at 192k global steps.
 
 **Domain randomization** (applied during training): friction [0.6, 2.0], added mass [0, 3 kg], motor strength [0.8×, 1.2×], optional action delay.
 
