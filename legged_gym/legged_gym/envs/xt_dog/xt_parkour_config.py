@@ -66,6 +66,9 @@ class XTDogParkourCfg( LeggedRobotCfg ):
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
 
+    class depth( LeggedRobotCfg.depth ):
+        position = [0.31, 0, 0.03]  # XTDog体型更大，相机位置前移（A1为0.27）
+
     class asset( LeggedRobotCfg.asset ):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/xt_dog/urdf/xt_dog.urdf'
         name = "xt_dog"
