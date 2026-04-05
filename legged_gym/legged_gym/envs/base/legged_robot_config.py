@@ -132,44 +132,68 @@ class LeggedRobotCfg(BaseConfig):
             height_measurements = 0.02
 
     class terrain:
+        """
+        地形系统配置
+        - 地形网格: num_rows(难度级别) × num_cols(地形类型)，每块地形 terrain_length × terrain_width 米
+        - curriculum: 课程学习，机器人表现好则升级到更难地形，表现差则降级
+        """
+        # 地形网格类型: none/plane/heightfield/trimesh
         mesh_type = 'trimesh' # "heightfield" # none, plane, heightfield or trimesh
+        
+        # 高度场转三角网格的方法: grid(精确) 或 fast(pydelatin 加速)
         hf2mesh_method = "grid"  # grid or fast
+
+        # fast 方法的最大误差
         max_error = 0.1 # for fast
-        max_error_camera = 2
+        max_error_camera = 2                    # 相机模式下的最大误差
 
-        y_range = [-0.4, 0.4]
+        y_range = [-0.4, 0.4]                   # 用来控制部分 parkour 地形在横向 y 方向上的随机偏移范围，不是整个地形的总宽度。
         
-        edge_width_thresh = 0.05
+        edge_width_thresh = 0.05                # 离台阶边多近，才算是在踩边上（单位：米）
+        
+        # 水平上每个像素的物理尺寸（单位：米），越小越精细，计算量越大
         horizontal_scale = 0.05 # [m] influence computation time by a lot
-        horizontal_scale_camera = 0.1
-        vertical_scale = 0.005 # [m]
-        border_size = 5 # [m]
-        height = [0.02, 0.06]
-        simplify_grid = False
-        gap_size = [0.02, 0.1]
-        stepping_stone_distance = [0.02, 0.08]
-        downsampled_scale = 0.075
-        curriculum = True
-
-        all_vertical = False
-        no_flat = True
         
-        static_friction = 1.0
-        dynamic_friction = 1.0
-        restitution = 0.
-        measure_heights = True
+        horizontal_scale_camera = 0.1           # 相机模式下，水平上每个像素的物理尺寸（单位：米），使用更粗的分辨率以加速
+        vertical_scale = 0.005                  # 垂直方向上每个像素的物理尺寸（单位：米）
+        border_size = 5                         # 边界的长度（单位：米）
+        height = [0.02, 0.06]                   # 地面粗糙度的上下起伏范围（单位：米）
+        simplify_grid = False                   # 是否做三角化网格减面，以提高渲染速度（相机模式开启，减到 5% 三角形）
+        gap_size = [0.02, 0.1]                  # 缝隙宽度范围
+        stepping_stone_distance = [0.02, 0.08]
+        downsampled_scale = 0.075               # 粗糙地面的“横向颗粒度”
+        curriculum = True                       # 是否启用课程学习
+
+        all_vertical = False                    # 墙是不是直接拉满成垂直
+        no_flat = True                          # 低难度时要不要出现平地/无墙版本
+        
+        static_friction = 1.0                   # 静摩擦系数（物体“还没滑起来”时，阻止它开始滑动的能力）
+        dynamic_friction = 1.0                  # 动摩擦系数（物体“已经在滑了”之后，继续阻碍滑动的能力）
+        restitution = 0.                        # 弹性恢复系数（撞上地面后，会反弹多少）
+        measure_heights = True                  # 是否测量地形高度（scandots 需要）
+        # 扫描点网格: 12×11 = 132 个点，覆盖机体周围 1.65m × 1.5m 区域
         measured_points_x = [-0.45, -0.3, -0.15, 0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.05, 1.2] # 1mx1.6m rectangle (without center line)
         measured_points_y = [-0.75, -0.6, -0.45, -0.3, -0.15, 0., 0.15, 0.3, 0.45, 0.6, 0.75]
         measure_horizontal_noise = 0.0
 
+        # 是否选择单一地形类型
         selected = False # select a unique terrain type and pass all arguments
+        
+        # 选定地形的参数字典
         terrain_kwargs = None # Dict of arguments for selected terrain
+
+        # 初始课程难度上限
         max_init_terrain_level = 5 # starting curriculum state
-        terrain_length = 18.
-        terrain_width = 4
+        terrain_length = 18.                    # 每块地形长度 [m]
+        terrain_width = 4                       # 每块地形宽度 [m]
+        
+        # 地形行数（难度级别 0-9）
         num_rows= 10 # number of terrain rows (levels)  # spreaded is benifitiall !
+        # 地形列数（地形类型数量）
         num_cols = 40 # number of terrain cols (types)
         
+        # 地形类型比例分配（所有值之和应为 1.0）
+        # 默认配置: 跑酷相关地形各占 20%
         terrain_dict = {"smooth slope": 0., 
                         "rough slope up": 0.0,
                         "rough slope down": 0.0,
@@ -184,19 +208,20 @@ class LeggedRobotCfg(BaseConfig):
                         "platform": 0.,
                         "large stairs up": 0.,
                         "large stairs down": 0.,
-                        "parkour": 0.2,
-                        "parkour_hurdle": 0.2,
-                        "parkour_flat": 0.2,
-                        "parkour_step": 0.2,
-                        "parkour_gap": 0.2,
-                        "demo": 0.0,}
+                        "parkour": 0.2,         # 综合跑酷（idx=15）
+                        "parkour_hurdle": 0.2,  # 跨栏（idx=16）
+                        "parkour_flat": 0.2,    # 平地跑酷（idx=17，用作 env_class 标志）
+                        "parkour_step": 0.2,    # 台阶跑酷（idx=18）
+                        "parkour_gap": 0.2,     # 跳跃缝隙（idx=19）
+                        "demo": 0.0,}           # 演示地形（idx=20）
         terrain_proportions = list(terrain_dict.values())
         
         # trimesh only:
+        # 超过此角度的斜面将被修正为垂直面
         slope_treshold = 1.5# slopes above this threshold will be corrected to vertical surfaces
-        origin_zero_z = True
+        origin_zero_z = True                    # 原点高度固定为 0
 
-        num_goals = 8
+        num_goals = 8                           # 每条地形上的路径点（waypoint）数量
 
     class commands:
         curriculum = False
