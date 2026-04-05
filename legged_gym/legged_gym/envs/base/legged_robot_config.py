@@ -34,31 +34,86 @@ from torch.nn.modules.pooling import MaxPool2d
 from .base_config import BaseConfig
 import torch.nn as nn
 class LeggedRobotCfg(BaseConfig):
+    """四足机器人环境的基础配置类，所有机器人特定配置（A1、Go1、XTDog）都继承自此类"""
+    
     class play:
+        # 是否加载学生（蒸馏）策略配置
         load_student_config = False
+
+        # 是否遮蔽特权观测
         mask_priv_obs = False
+    
     class env:
+        # 并行仿真环境数量（GPU 并行训练的核心参数）
         num_envs = 6144
 
+        # 在机器人周围采样地面高度（scandots）的维度，默认为132，表示为12行11列的网格，采样点分别为：measured_points_x和measured_points_y
         n_scan = 132
+
+        # 特权显式观测维度，9（base_lin_vel 3 + 6个零占位）
         n_priv = 3+3 +3
+        
+         # n_priv_latent 特权隐式观测维度 （默认为29）
+         # 1.质量（4维）：机身附加质量（1）和机身质心漂移（3）
+         # 2.摩擦（1维）
+         # 3.电机强度（24维)：Kp（12维）+Kd（12维）
         n_priv_latent = 4 + 1 + 12 +12
+        
+        # n_proprio 本体感知维度（默认为53）
+        # 1.机身坐标系下的角速度：base_ang_vel（3维）
+        #    - wx
+        #    - wy
+        #    - wz
+        # 2.IMU：imu_obs（2维）
+        #    - roll
+        #    - pitch
+        # 3.偏航（3维）
+        #    - delta_yaw（到当前目标点的偏航差）
+        #    - delta_next_yaw：到下一目标点的偏航差
+        #    - 1维零占位
+        # 4.接触（4维），对应四条腿是否接触地面
+        # 5.关节相关（36 维）
+        #    - 12 维关节角偏差 dof_pos - default_dof_pos
+        #    - 12 维关节角速度 dof_vel
+        #    - 12 维上一步动作 action_history_buf[:, -1]
+        # 6.指令/任务标志(5维)
+        #    - 1 维前进速度指令
+        #    - 1 维非跑酷地形标志
+        #    - 1 维跑酷地形标志
+        #    - 2 维零占位
         n_proprio = 3 + 2 + 3 + 4 + 36 + 5
+        
+        # 历史帧数，用于时序编码
         history_len = 10
 
+        # 总观测维度 = 本体感知53 + 扫描132 + 历史10×53 + 特权隐式29 + 特权显式9 = 753
         num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + n_priv #n_scan + n_proprio + n_priv #187 + 47 + 5 + 12 
+        
+        # 特权观测维度，None 表示 critic 直接使用 obs_buf
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
+        
+        # 动作维度（4条腿 × 3个关节）
         num_actions = 12
+        
+        # 环境间距（使用地形时不生效）
         env_spacing = 3.  # not used with heightfields/trimeshes 
+
+        # 是否将超时信息发送给算法（用于 bootstrapping）
         send_timeouts = True # send time out information to the algorithm
+        
+        # 1秒内的 episode 时长
         episode_length_s = 20 # episode length in seconds
         obs_type = "og"
 
 
         
         
-        
+        # 是否启用历史编码器（DAgger 蒸馏用）
+        # 作用：控制环境里是否维护一段本体观测历史缓冲 obs_history_buf，每步把最近 history_len 帧 n_proprio 观测拼到 obs 末尾
+        # 直白地说，它让策略不只看“这一帧”，还看“最近 10 帧我是怎么动的”，从而推断速度、接触变化、动力学特性等。
         history_encoding = True
+
+        # 是否重排关节顺序（URDF顺序 → 策略顺序）
         reorder_dofs = True
         
         
@@ -69,8 +124,10 @@ class LeggedRobotCfg(BaseConfig):
         # action_delay_range = [0, 5]
 
         # additional visual inputs 
+        # 是否在观测中包含足部接触信息
         include_foot_contacts = True
-        
+
+        # 起始状态随机化（用于增强鲁棒性）
         randomize_start_pos = False
         randomize_start_vel = False
         randomize_start_yaw = False
@@ -80,10 +137,15 @@ class LeggedRobotCfg(BaseConfig):
         randomize_start_pitch = False
         rand_pitch_range = 1.6
 
+        # 接触历史缓冲区长度
         contact_buf_len = 100
 
+        # 路径点（waypoint）导航参数
+        # 到达当前路径点的距离阈值（米）
         next_goal_threshold = 0.2
+        # 到达路径点后的延迟时间
         reach_goal_delay = 0.1
+        # 观测中包含的未来路径点数量
         num_future_goal_obs = 2
 
     class depth:
