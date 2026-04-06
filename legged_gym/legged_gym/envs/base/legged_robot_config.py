@@ -357,52 +357,65 @@ class LeggedRobotCfg(BaseConfig):
         thickness = 0.01
 
     class domain_rand:
-        randomize_friction = True
-        friction_range = [0.6, 2.]
-        randomize_base_mass = True
-        added_mass_range = [0., 3.]
-        randomize_base_com = True
-        added_com_range = [-0.2, 0.2]
-        push_robots = True
-        push_interval_s = 8
-        max_push_vel_xy = 0.5
+        """
+        域随机化配置（Domain Randomization）
+        随机化物理参数以提高策略的 sim-to-real 迁移能力
+        """
+        randomize_friction = True               # 随机化地面摩擦系数
+        friction_range = [0.6, 2.]              # 摩擦系数范围
+        randomize_base_mass = True              # 随机化机体附加质量
+        added_mass_range = [0., 3.]             # 附加质量范围 [kg]
+        randomize_base_com = True               # 随机化质心偏移
+        added_com_range = [-0.2, 0.2]           # 质心偏移范围 [m]
+        push_robots = True                      # 是否随机推动机器人
+        push_interval_s = 8                     # 推动间隔 [s]
+        max_push_vel_xy = 0.5                   # 最大推动速度 [m/s]
 
-        randomize_motor = True
-        motor_strength_range = [0.8, 1.2]
+        randomize_motor = True                  # 随机化电机强度
+        motor_strength_range = [0.8, 1.2]       # 电机强度倍率范围
 
-        delay_update_global_steps = 24 * 8000
-        action_delay = False
-        action_curr_step = [1, 1]
-        action_curr_step_scratch = [0, 1]
-        action_delay_view = 1
-        action_buf_len = 8
+        # 动作延迟配置（模拟真实通信延迟，关键 sim-to-real 参数）
+        delay_update_global_steps = 24 * 8000   # 延迟更新的全局步数阈值（=192000）
+        action_delay = False                    # 是否启用动作延迟
+        action_curr_step = [1, 1]               # 蒸馏阶段延迟步数范围（固定 1 步）
+        action_curr_step_scratch = [0, 1]       # base 训练延迟步数范围（0~1步随机）
+        action_delay_view = 1                   # 可视化时的延迟步数
+        action_buf_len = 8                      # 动作历史缓冲区长度
         
     class rewards:
+        """
+        奖励函数配置
+        正奖励鼓励目标行为（跟踪速度、跟踪偏航），负奖励惩罚不良行为（碰撞、姿态偏差）
+        所有 scale 值在初始化时会乘以 dt，奖励函数定义为 LeggedRobot 上的 _reward_<name> 方法
+        """
         class scales:
             # tracking rewards
-            tracking_goal_vel = 1.5
-            tracking_yaw = 0.5
-            # regularization rewards
-            lin_vel_z = -1.0
-            ang_vel_xy = -0.05
-            orientation = -1.
-            dof_acc = -2.5e-7
-            collision = -10.
-            action_rate = -0.1
-            delta_torques = -1.0e-7
-            torques = -0.00001
-            hip_pos = -0.5
-            dof_error = -0.04
-            feet_stumble = -1
-            feet_edge = -1
+            # === 目标跟踪奖励（正值）===
+            tracking_goal_vel = 1.5     # 速度跟踪奖励（exp(-误差²/sigma)）
+            tracking_yaw = 0.5          # 偏航角跟踪奖励
             
-        only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
-        tracking_sigma = 0.2 # tracking reward = exp(-error^2/sigma)
-        soft_dof_pos_limit = 1. # percentage of urdf limits, values above this limit are penalized
-        soft_dof_vel_limit = 1
+            # regularization rewards
+            # === 正则化惩罚（负值）===
+            lin_vel_z = -1.0            # z轴线速度惩罚（抑制弹跳）
+            ang_vel_xy = -0.05          # x轴（横滚角）和y轴（俯仰角）的角速度惩罚（抑制角度不稳）
+            orientation = -1.           # 重力方向在机器人坐标系下的投影惩罚（抑制倾斜不稳）
+            dof_acc = -2.5e-7           # 关节加速度惩罚（平滑运动）
+            collision = -10.            # 碰撞惩罚（身体/大腿/小腿碰地）
+            action_rate = -0.1          # 动作变化率惩罚（平滑控制）
+            delta_torques = -1.0e-7     # 力矩变化惩罚
+            torques = -0.00001          # 力矩大小惩罚（节能）
+            hip_pos = -0.5              # 髋关节位置惩罚（防止劈叉）
+            dof_error = -0.04           # 关节误差惩罚
+            feet_stumble = -1           # 绊倒惩罚
+            feet_edge = -1              # 踩边缘惩罚
+
+        only_positive_rewards = True    # 是否将负总奖励裁剪为零（避免早终止问题）
+        tracking_sigma = 0.2            # 跟踪奖励的 sigma 参数: reward = exp(-error²/sigma)
+        soft_dof_pos_limit = 1.         # 关节软限位（URDF 限位的百分比）
+        soft_dof_vel_limit = 1          # 
         soft_torque_limit = 0.4
-        base_height_target = 1.
-        max_contact_force = 40. # forces above this value are penalized
+        base_height_target = 1.         # 目标机体高度 [m]
+        max_contact_force = 40.         # 最大接触力阈值 [N]
 
 
 
