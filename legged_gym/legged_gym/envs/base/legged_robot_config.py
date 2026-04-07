@@ -172,26 +172,40 @@ class LeggedRobotCfg(BaseConfig):
         invert = True
 
     class normalization:
+        """
+        观测归一化参数，将不同物理量缩放到相近数量级
+        作用：
+            1. 使得每个维度都能被公平学习
+            2. 避免激活饱和
+        """
         class obs_scales:
-            lin_vel = 2.0
-            ang_vel = 0.25
-            dof_pos = 1.0
-            dof_vel = 0.05
-            height_measurements = 5.0
-        clip_observations = 100.
-        clip_actions = 1.2
+            lin_vel = 2.0               # 线速度观测归一化因子
+            ang_vel = 0.25              # 角速度观测归一化因子
+            dof_pos = 1.0               # 关节角度观测归一化因子
+            dof_vel = 0.05              # 关节角速度观测归一化因子
+            height_measurements = 5.0   # 高度测量观测归一化因子
+        clip_observations = 100.        # 观测裁剪范围
+        clip_actions = 1.2              # 动作裁剪范围
     class noise:
+        """
+        观测噪声配置，给观测 x 加一个均匀分布噪声，范围大致是 [-scale * noise_level, +scale * noise_level]。
+        作用：模拟真实传感器噪声，增强 sim-to-real 迁移能力
+        """
         add_noise = False
+        # 全局噪声缩放因子
         noise_level = 1.0 # scales other values
+
+        # 是否量化高度测量
         quantize_height = True
+
         class noise_scales:
-            rotation = 0.0
-            dof_pos = 0.01
-            dof_vel = 0.05
-            lin_vel = 0.05
-            ang_vel = 0.05
-            gravity = 0.02
-            height_measurements = 0.02
+            rotation = 0.0              # 姿态相关观测的噪声
+            dof_pos = 0.01              # 关节位置观测噪声
+            dof_vel = 0.05              # 关节速度观测噪声
+            lin_vel = 0.05              # 机体线速度观测噪声
+            ang_vel = 0.05              # 机体角速度观测噪声
+            gravity = 0.02              # 重力方向观测噪声
+            height_measurements = 0.02  # 地形高度采样/高度扫描的噪声
 
     class terrain:
         """
