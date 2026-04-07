@@ -149,27 +149,42 @@ class LeggedRobotCfg(BaseConfig):
         num_future_goal_obs = 2
 
     class depth:
-        use_camera = False
-        camera_num_envs = 192
-        camera_terrain_num_rows = 10
-        camera_terrain_num_cols = 20
+        """深度相机配置（用于第二阶段视觉蒸馏训练）"""
+        use_camera = False              # 是否启用深度相机（第二阶段训练时开启）
+        camera_num_envs = 192           # 使用相机时的环境数量（比 base 训练少，因为渲染开销大）
+        camera_terrain_num_rows = 10    # 相机模式地形网格的行数（难度层级数）
+        camera_terrain_num_cols = 20    # 相机模式地形列数（地形类型数）
 
+        # 相机安装位置 [x, y, z]（机体前方）
         position = [0.27, 0, 0.03]  # front camera
+
+        # 相机俯仰角范围（正值=向下看）
         angle = [-5, 5]  # positive pitch down
 
+        # 深度图更新间隔（仿真步），5步≈25ms
         update_interval = 5  # 5 works without retraining, 8 worse
 
+        # 原始深度图分辨率 (宽, 高)
         original = (106, 60)
+
+        # 缩放后分辨率（输入神经网络的尺寸）
         resized = (87, 58)
+
+        # 水平视场角（度）
         horizontal_fov = 87
+
+        # 深度图缓冲区长度
         buffer_len = 2
-        
+
+        # 近裁剪面距离（米）
         near_clip = 0
+
+         # 远裁剪面距离（米）
         far_clip = 2
-        dis_noise = 0.0
-        
-        scale = 1
-        invert = True
+        dis_noise = 0.0             # 深度噪声标准差
+
+        scale = 1                   # 深度值缩放因子
+        invert = True               # 是否反转深度值（近=大值）
 
     class normalization:
         """
@@ -300,14 +315,17 @@ class LeggedRobotCfg(BaseConfig):
         num_goals = 8                           # 每条地形上的路径点（waypoint）数量
 
     class commands:
-        curriculum = False
+        """运动指令配置（用于导航目标生成）"""
+        curriculum = False           # 是否启用指令课程学习
         max_curriculum = 1.
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 6. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
+
+        lin_vel_clip = 0.2           # 线速度裁剪阈值
+        ang_vel_clip = 0.4           # 角速度裁剪阈值
         
-        lin_vel_clip = 0.2
-        ang_vel_clip = 0.4
+        # 初始速度范围
         # Easy ranges
         class ranges:
             lin_vel_x = [0., 1.5] # min max [m/s]
@@ -315,6 +333,7 @@ class LeggedRobotCfg(BaseConfig):
             ang_vel_yaw = [0, 0]    # min max [rad/s]
             heading = [0, 0]
 
+        # 课程学习最大速度范围
         # Easy ranges
         class max_ranges:
             lin_vel_x = [0.3, 0.8] # min max [m/s]
@@ -322,6 +341,7 @@ class LeggedRobotCfg(BaseConfig):
             ang_vel_yaw = [-0, 0]    # min max [rad/s]
             heading = [-1.6, 1.6]
 
+        # 课程学习增量
         class crclm_incremnt:
             lin_vel_x = 0.1 # min max [m/s]
             lin_vel_y = 0.1  # min max [m/s]
@@ -329,6 +349,8 @@ class LeggedRobotCfg(BaseConfig):
             heading = 0.5
 
         waypoint_delta = 0.7
+
+        waypoint_delta = 0.7         # 路径点间距
 
     class init_state:
         pos = [0.0, 0.0, 1.] # x,y,z [m]
