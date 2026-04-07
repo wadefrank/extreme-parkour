@@ -55,6 +55,106 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
         checkpoint = model.split("_")[-1].split(".")[0]
     return model, checkpoint
 
+
+def set_terrain_proportions(env_cfg, terrain_dict):
+    env_cfg.terrain.terrain_dict = terrain_dict
+    env_cfg.terrain.terrain_proportions = list(terrain_dict.values())
+
+
+def configure_play_env(env_cfg, args):
+    play_mode = args.play_mode.lower()
+
+    if args.nodelay:
+        env_cfg.domain_rand.action_delay_view = 0
+
+    if play_mode == "raw":
+        env_cfg.env.num_envs = 16 if not args.save else 64
+    elif play_mode == "easy_debug":
+        env_cfg.env.num_envs = 1 if not args.save else 16
+        env_cfg.env.episode_length_s = 60
+        env_cfg.commands.resampling_time = 60
+        env_cfg.commands.ranges.lin_vel_x = [0.6, 0.6]
+        env_cfg.commands.ranges.lin_vel_y = [0.0, 0.0]
+        env_cfg.commands.ranges.heading = [0.0, 0.0]
+        env_cfg.commands.ranges.ang_vel_yaw = [0.0, 0.0]
+        env_cfg.terrain.num_rows = 2
+        env_cfg.terrain.num_cols = 2
+        env_cfg.terrain.height = [0.0, 0.0]
+        env_cfg.terrain.y_range = [0.0, 0.0]
+        env_cfg.terrain.max_init_terrain_level = 0
+        env_cfg.terrain.curriculum = False
+        env_cfg.terrain.max_difficulty = False
+        set_terrain_proportions(env_cfg, {
+            "smooth slope": 0.0,
+            "rough slope up": 0.0,
+            "rough slope down": 0.0,
+            "rough stairs up": 0.0,
+            "rough stairs down": 0.0,
+            "discrete": 0.0,
+            "stepping stones": 0.0,
+            "gaps": 0.0,
+            "smooth flat": 0.0,
+            "pit": 0.0,
+            "wall": 0.0,
+            "platform": 0.0,
+            "large stairs up": 0.0,
+            "large stairs down": 0.0,
+            "parkour": 0.0,
+            "parkour_hurdle": 0.0,
+            "parkour_flat": 1.0,
+            "parkour_step": 0.0,
+            "parkour_gap": 0.0,
+            "demo": 0.0,
+        })
+        env_cfg.noise.add_noise = False
+        env_cfg.domain_rand.action_delay = False
+        env_cfg.domain_rand.randomize_friction = False
+        env_cfg.domain_rand.push_robots = False
+        env_cfg.domain_rand.randomize_base_mass = False
+        env_cfg.domain_rand.randomize_base_com = False
+    elif play_mode == "legacy":
+        env_cfg.env.num_envs = 16 if not args.save else 64
+        env_cfg.env.episode_length_s = 60
+        env_cfg.commands.resampling_time = 60
+        env_cfg.terrain.num_rows = 5
+        env_cfg.terrain.num_cols = 5
+        env_cfg.terrain.height = [0.02, 0.02]
+        set_terrain_proportions(env_cfg, {
+            "smooth slope": 0.0,
+            "rough slope up": 0.0,
+            "rough slope down": 0.0,
+            "rough stairs up": 0.0,
+            "rough stairs down": 0.0,
+            "discrete": 0.0,
+            "stepping stones": 0.0,
+            "gaps": 0.0,
+            "smooth flat": 0.0,
+            "pit": 0.0,
+            "wall": 0.0,
+            "platform": 0.0,
+            "large stairs up": 0.0,
+            "large stairs down": 0.0,
+            "parkour": 0.2,
+            "parkour_hurdle": 0.2,
+            "parkour_flat": 0.0,
+            "parkour_step": 0.2,
+            "parkour_gap": 0.2,
+            "demo": 0.2,
+        })
+        env_cfg.terrain.curriculum = False
+        env_cfg.terrain.max_difficulty = True
+        env_cfg.depth.angle = [0, 1]
+        env_cfg.noise.add_noise = True
+        env_cfg.domain_rand.randomize_friction = True
+        env_cfg.domain_rand.push_robots = False
+        env_cfg.domain_rand.push_interval_s = 6
+        env_cfg.domain_rand.randomize_base_mass = False
+        env_cfg.domain_rand.randomize_base_com = False
+    else:
+        raise ValueError(f"Unsupported play_mode: {args.play_mode}. Expected raw, easy_debug, or legacy.")
+
+    return play_mode
+
 def play(args):
     if args.web:
         web_viewer = webviewer.WebViewer()
@@ -63,47 +163,10 @@ def play(args):
     log_pth = "../../logs/{}/".format(args.proj_name) + args.exptid
 
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
-    # override some parameters for testing
-    if args.nodelay:
-        env_cfg.domain_rand.action_delay_view = 0
-    env_cfg.env.num_envs = 16 if not args.save else 64
-    env_cfg.env.episode_length_s = 60
-    env_cfg.commands.resampling_time = 60
-    env_cfg.terrain.num_rows = 5
-    env_cfg.terrain.num_cols = 5
-    env_cfg.terrain.height = [0.02, 0.02]
-    env_cfg.terrain.terrain_dict = {"smooth slope": 0., 
-                                    "rough slope up": 0.0,
-                                    "rough slope down": 0.0,
-                                    "rough stairs up": 0., 
-                                    "rough stairs down": 0., 
-                                    "discrete": 0., 
-                                    "stepping stones": 0.0,
-                                    "gaps": 0., 
-                                    "smooth flat": 0,
-                                    "pit": 0.0,
-                                    "wall": 0.0,
-                                    "platform": 0.,
-                                    "large stairs up": 0.,
-                                    "large stairs down": 0.,
-                                    "parkour": 0.2,
-                                    "parkour_hurdle": 0.2,
-                                    "parkour_flat": 0.,
-                                    "parkour_step": 0.2,
-                                    "parkour_gap": 0.2, 
-                                    "demo": 0.2}
-    
-    env_cfg.terrain.terrain_proportions = list(env_cfg.terrain.terrain_dict.values())
-    env_cfg.terrain.curriculum = False
-    env_cfg.terrain.max_difficulty = True
-    
-    env_cfg.depth.angle = [0, 1]
-    env_cfg.noise.add_noise = True
-    env_cfg.domain_rand.randomize_friction = True
-    env_cfg.domain_rand.push_robots = False
-    env_cfg.domain_rand.push_interval_s = 6
-    env_cfg.domain_rand.randomize_base_mass = False
-    env_cfg.domain_rand.randomize_base_com = False
+    play_mode = configure_play_env(env_cfg, args)
+    print(f"Play mode: {play_mode}")
+    print(f"num_envs={env_cfg.env.num_envs}, episode_length_s={env_cfg.env.episode_length_s}, resampling_time={env_cfg.commands.resampling_time}")
+    print(f"terrain.height={env_cfg.terrain.height}, noise={env_cfg.noise.add_noise}, friction_rand={env_cfg.domain_rand.randomize_friction}, action_delay={env_cfg.domain_rand.action_delay}")
 
     depth_latent_buffer = []
     # prepare environment
@@ -145,7 +208,7 @@ def play(args):
                     actions, depth_latent = policy_jit(obs.detach(), False, depth_buffer, depth_latent)
             else:
                 obs_jit = torch.cat((obs.detach()[:, :env_cfg.env.n_proprio+env_cfg.env.n_priv], obs.detach()[:, -env_cfg.env.history_len*env_cfg.env.n_proprio:]), dim=1)
-                actions = policy(obs_jit)
+                actions = policy_jit(obs_jit)
         else:
             if env.cfg.depth.use_camera:
                 if infos["depth"] is not None:
