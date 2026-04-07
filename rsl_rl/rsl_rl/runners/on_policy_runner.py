@@ -48,6 +48,13 @@ from copy import copy, deepcopy
 import warnings
 
 class OnPolicyRunner:
+    """
+    On-Policy 训练运行器（训练主循环）
+
+    根据是否启用深度相机，自动选择训练模式:
+      - learn_RL: 第一阶段 base policy 训练（PPO + 估计器 + DAgger）
+      - learn_vision: 第二阶段视觉蒸馏训练（深度编码器 + 深度 Actor 模仿学习）
+    """
 
     def __init__(self,
                  env: VecEnv,
@@ -64,6 +71,7 @@ class OnPolicyRunner:
         self.device = device
         self.env = env
 
+        # === 创建 Actor-Critic 网络 ===
         print("Using MLP and Priviliged Env encoder ActorCritic structure")
         actor_critic: ActorCriticRMA = ActorCriticRMA(self.env.cfg.env.n_proprio,
                                                       self.env.cfg.env.n_scan,
@@ -73,15 +81,21 @@ class OnPolicyRunner:
                                                       self.env.cfg.env.history_len,
                                                       self.env.num_actions,
                                                       **self.policy_cfg).to(self.device)
+        # 特权状态估计器: 从本体感知(53维) → 预测线速度等(9维)
         estimator = Estimator(input_dim=env.cfg.env.n_proprio, output_dim=env.cfg.env.n_priv, hidden_dims=self.estimator_cfg["hidden_dims"]).to(self.device)
+
+        # === 深度视觉编码器（仅第二阶段使用）===
         # Depth encoder
         self.if_depth = self.depth_encoder_cfg["if_depth"]
         if self.if_depth:
-            depth_backbone = DepthOnlyFCBackbone58x87(env.cfg.env.n_proprio, 
-                                                    self.policy_cfg["scan_encoder_dims"][-1], 
+            # CNN 骨干网络: 58×87 深度图 → 32 维潜在向量
+            depth_backbone = DepthOnlyFCBackbone58x87(env.cfg.env.n_proprio,
+                                                    self.policy_cfg["scan_encoder_dims"][-1],
                                                     self.depth_encoder_cfg["hidden_dims"],
                                                     )
+            # 循环深度编码器: CNN + GRU → 32 维深度潜在 + 2 维偏航修正
             depth_encoder = RecurrentDepthBackbone(depth_backbone, env.cfg).to(self.device)
+            # 深度 Actor: base actor 的深拷贝，作为视觉蒸馏的 student
             depth_actor = deepcopy(actor_critic.actor)
         else:
             depth_encoder = None
@@ -91,23 +105,27 @@ class OnPolicyRunner:
         # self.depth_encoder_paras = self.depth_encoder_cfg
         # self.depth_encoder_criterion = nn.MSELoss()
         # Create algorithm
-        alg_class = eval(self.cfg["algorithm_class_name"]) # PPO
-        self.alg: PPO = alg_class(actor_critic, 
-                                  estimator, self.estimator_cfg, 
+
+        # === 创建 PPO 算法 ===
+        alg_class = eval(self.cfg["algorithm_class_name"])  # PPO
+        self.alg: PPO = alg_class(actor_critic,
+                                  estimator, self.estimator_cfg,
                                   depth_encoder, self.depth_encoder_cfg, depth_actor,
                                   device=self.device, **self.alg_cfg)
-        self.num_steps_per_env = self.cfg["num_steps_per_env"]
+        self.num_steps_per_env = self.cfg["num_steps_per_env"]  # 每次迭代 rollout 步数（base=24, vision=120）
         self.save_interval = self.cfg["save_interval"]
-        self.dagger_update_freq = self.alg_cfg["dagger_update_freq"]
+        self.dagger_update_freq = self.alg_cfg["dagger_update_freq"]  # DAgger 更新频率（每 20 次迭代）
 
+        # 初始化 rollout 存储
         self.alg.init_storage(
-            self.env.num_envs, 
-            self.num_steps_per_env, 
-            [self.env.num_obs], 
-            [self.env.num_privileged_obs], 
+            self.env.num_envs,
+            self.num_steps_per_env,
+            [self.env.num_obs],
+            [self.env.num_privileged_obs],
             [self.env.num_actions],
         )
 
+        # 根据是否使用深度相机选择训练模式
         self.learn = self.learn_RL if not self.if_depth else self.learn_vision
             
         # Log
@@ -119,18 +137,23 @@ class OnPolicyRunner:
         
 
     def learn_RL(self, num_learning_iterations, init_at_random_ep_len=False):
+        """
+        第一阶段: Base Policy 训练（强化学习）
+        每次迭代: rollout 24步 → 计算 GAE returns → PPO 更新 → (可选) DAgger 更新历史编码器
+        """
         mean_value_loss = 0.
         mean_surrogate_loss = 0.
         mean_estimator_loss = 0.
         mean_disc_loss = 0.
         mean_disc_acc = 0.
         mean_hist_latent_loss = 0.
-        mean_priv_reg_loss = 0. 
+        mean_priv_reg_loss = 0.
         priv_reg_coef = 0.
         entropy_coef = 0.
         # initialize writer
         # if self.log_dir is not None and self.writer is None:
         #     self.writer = SummaryWriter(log_dir=self.log_dir, flush_secs=10)
+        # 随机初始化 episode 长度（打散环境同步，增加多样性）
         if init_at_random_ep_len:
             self.env.episode_length_buf = torch.randint_like(self.env.episode_length_buf, high=int(self.env.max_episode_length))
         obs = self.env.get_observations()
@@ -156,13 +179,14 @@ class OnPolicyRunner:
 
         for it in range(self.current_learning_iteration, tot_iter):
             start = time.time()
+            # 每 20 次迭代启用历史编码器（DAgger 更新周期）
             hist_encoding = it % self.dagger_update_freq == 0
 
-            # Rollout
+            # === Rollout 阶段: 收集 num_steps_per_env 步的交互数据 ===
             with torch.inference_mode():
                 for i in range(self.num_steps_per_env):
                     actions = self.alg.act(obs, critic_obs, infos, hist_encoding)
-                    obs, privileged_obs, rewards, dones, infos = self.env.step(actions)  # obs has changed to next_obs !! if done obs has been reset
+                    obs, privileged_obs, rewards, dones, infos = self.env.step(actions)
                     critic_obs = privileged_obs if privileged_obs is not None else obs
                     obs, critic_obs, rewards, dones = obs.to(self.device), critic_obs.to(self.device), rewards.to(self.device), dones.to(self.device)
                     total_rew = self.alg.process_env_step(rewards, dones, infos)
@@ -191,19 +215,22 @@ class OnPolicyRunner:
                 stop = time.time()
                 collection_time = stop - start
 
-                # Learning step
+                # === Learning 阶段: 用 GAE 计算 returns → PPO 更新 ===
                 start = stop
                 self.alg.compute_returns(critic_obs)
-            
+
+            # PPO 更新 Actor-Critic + 估计器
             mean_value_loss, mean_surrogate_loss, mean_estimator_loss, mean_disc_loss, mean_disc_acc, mean_priv_reg_loss, priv_reg_coef = self.alg.update()
+            # 每 20 次迭代额外执行 DAgger 更新历史编码器
             if hist_encoding:
                 print("Updating dagger...")
                 mean_hist_latent_loss = self.alg.update_dagger()
-            
+
             stop = time.time()
             learn_time = stop - start
             if self.log_dir is not None:
                 self.log(locals())
+            # 自适应保存间隔: <2500→每100次, <5000→每200次, ≥5000→每500次
             if it < 2500:
                 if it % self.save_interval == 0:
                     self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(it)))
@@ -219,6 +246,12 @@ class OnPolicyRunner:
         self.save(os.path.join(self.log_dir, 'model_{}.pt'.format(self.current_learning_iteration)))
 
     def learn_vision(self, num_learning_iterations, init_at_random_ep_len=False):
+        """
+        第二阶段: 视觉蒸馏训练
+        Teacher: base policy（使用 scandots 特权信息）
+        Student: depth_actor（使用深度相机图像）
+        每次迭代 120 步 rollout → 收集 teacher/student 动作对 → 蒸馏损失更新
+        """
         tot_iter = self.current_learning_iteration + num_learning_iterations
         self.start_learning_iteration = copy(self.current_learning_iteration)
 
@@ -247,31 +280,37 @@ class OnPolicyRunner:
             delta_yaw_ok_buffer = []
             for i in range(self.depth_encoder_cfg["num_steps_per_env"]):
                 if infos["depth"] != None:
+                    # Teacher: 用 scan_encoder 编码 scandots（作为蒸馏目标）
                     with torch.no_grad():
                         scandots_latent = self.alg.actor_critic.actor.infer_scandots_latent(obs)
                     scandots_latent_buffer.append(scandots_latent)
+                    # Student: 用 depth_encoder 编码深度图 → 32维深度潜在 + 2维偏航修正
                     obs_prop_depth = obs[:, :self.env.cfg.env.n_proprio].clone()
-                    obs_prop_depth[:, 6:8] = 0
-                    depth_latent_and_yaw = self.alg.depth_encoder(infos["depth"].clone(), obs_prop_depth)  # clone is crucial to avoid in-place operation
-                    
-                    depth_latent = depth_latent_and_yaw[:, :-2]
-                    yaw = 1.5*depth_latent_and_yaw[:, -2:]
+                    obs_prop_depth[:, 6:8] = 0  # 遮蔽偏航信息（由深度编码器预测）
+                    depth_latent_and_yaw = self.alg.depth_encoder(infos["depth"].clone(), obs_prop_depth)
+
+                    depth_latent = depth_latent_and_yaw[:, :-2]     # 前 32 维: 深度潜在向量
+                    yaw = 1.5*depth_latent_and_yaw[:, -2:]          # 后 2 维: 偏航角预测（×1.5 缩放）
                     
                     depth_latent_buffer.append(depth_latent)
                     yaw_buffer_student.append(yaw)
-                    yaw_buffer_teacher.append(obs[:, 6:8])
-                
+                    yaw_buffer_teacher.append(obs[:, 6:8])          # 真实偏航角作为 teacher 信号
+
+                # Teacher 动作: base policy（使用 scandots，无噪声推理）
                 with torch.no_grad():
                     actions_teacher = self.alg.actor_critic.act_inference(obs, hist_encoding=True, scandots_latent=None)
                     actions_teacher_buffer.append(actions_teacher)
 
+                # Student 动作: depth_actor（使用深度编码器输出替代 scandots）
                 obs_student = obs.clone()
+                # 用预测的偏航角替换观测中的偏航（仅对偏航预测合理的环境）
                 # obs_student[:, 6:8] = yaw.detach()
                 obs_student[infos["delta_yaw_ok"], 6:8] = yaw.detach()[infos["delta_yaw_ok"]]
                 delta_yaw_ok_buffer.append(torch.nonzero(infos["delta_yaw_ok"]).size(0) / infos["delta_yaw_ok"].numel())
                 actions_student = self.alg.depth_actor(obs_student, hist_encoding=True, scandots_latent=depth_latent)
                 actions_student_buffer.append(actions_student)
 
+                # 用 student 的动作驱动环境（预训练阶段用 teacher 动作）
                 # detach actions before feeding the env
                 if it < num_pretrain_iter:
                     obs, privileged_obs, rewards, dones, infos = self.env.step(actions_teacher.detach())  # obs has changed to next_obs !! if done obs has been reset
@@ -483,6 +522,10 @@ class OnPolicyRunner:
         print(log_string)
 
     def save(self, path, infos=None):
+        """
+        保存 checkpoint（包含所有模型权重和优化器状态）
+        文件格式: model_{iteration}.pt
+        """
         state_dict = {
             'model_state_dict': self.alg.actor_critic.state_dict(),
             'estimator_state_dict': self.alg.estimator.state_dict(),
@@ -496,6 +539,11 @@ class OnPolicyRunner:
         torch.save(state_dict, path)
 
     def load(self, path, load_optimizer=True):
+        """
+        加载 checkpoint
+        注意: current_learning_iteration 不会恢复（第518行被注释掉），
+        恢复训练时迭代计数器从 0 重新开始
+        """
         print("*" * 80)
         print("Loading model from {}...".format(path))
         loaded_dict = torch.load(path, map_location=self.device)
@@ -511,11 +559,12 @@ class OnPolicyRunner:
                 print("Saved depth actor detected, loading...")
                 self.alg.depth_actor.load_state_dict(loaded_dict['depth_actor_state_dict'])
             else:
+                # 如果没有保存 depth_actor，从 base actor 复制权重作为初始化
                 print("No saved depth actor, Copying actor critic actor to depth actor...")
                 self.alg.depth_actor.load_state_dict(self.alg.actor_critic.actor.state_dict())
         if load_optimizer:
             self.alg.optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
-        # self.current_learning_iteration = loaded_dict['iter']
+        # self.current_learning_iteration = loaded_dict['iter']  # 注意: 未恢复迭代计数器
         print("*" * 80)
         return loaded_dict['infos']
 

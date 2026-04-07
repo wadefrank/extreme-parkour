@@ -10,6 +10,14 @@ from torch.nn.modules.activation import ReLU
 from torch.nn.utils.parametrizations import spectral_norm
 
 class Estimator(nn.Module):
+    """
+    特权状态估计器
+    从本体感知信息预测部署时不可获取的特权显式信息（如机体线速度）
+
+    网络结构: n_proprio(53) → 128 → 64 → n_priv(9)
+    训练损失: MSE(predicted_priv, true_priv)
+    部署时替代真实特权信息，使 Actor 在没有特权信息时也能正常工作
+    """
     def __init__(self,  input_dim,
                         output_dim,
                         hidden_dims=[256, 128, 64],
@@ -17,8 +25,8 @@ class Estimator(nn.Module):
                         **kwargs):
         super(Estimator, self).__init__()
 
-        self.input_dim = input_dim
-        self.output_dim = output_dim
+        self.input_dim = input_dim      # 本体感知维度 (53)
+        self.output_dim = output_dim    # 特权显式维度 (9)
         activation = get_activation(activation)
         estimator_layers = []
         estimator_layers.append(nn.Linear(self.input_dim, hidden_dims[0]))
@@ -31,11 +39,13 @@ class Estimator(nn.Module):
                 estimator_layers.append(activation)
         # estimator_layers.append(nn.Tanh())
         self.estimator = nn.Sequential(*estimator_layers)
-    
+
     def forward(self, input):
+        """训练时前向传播（带梯度）"""
         return self.estimator(input)
-    
+
     def inference(self, input):
+        """推理/部署时使用（无梯度）"""
         with torch.no_grad():
             return self.estimator(input)
 
