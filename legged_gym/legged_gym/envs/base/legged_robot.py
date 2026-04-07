@@ -76,18 +76,22 @@ def euler_from_quaternion(quat_angle):
         return roll_x, pitch_y, yaw_z # in radians
 
 class LeggedRobot(BaseTask):
-    def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
-        """ Parses the provided config file,
-            calls create_sim() (which creates, simulation, terrain and environments),
-            initilizes pytorch buffers used during training
+    """
+    四足机器人仿真环境（核心类）
 
-        Args:
-            cfg (Dict): Environment config file
-            sim_params (gymapi.SimParams): simulation parameters
-            physics_engine (gymapi.SimType): gymapi.SIM_PHYSX (must be PhysX)
-            device_type (string): 'cuda' or 'cpu'
-            device_id (int): 0, 1, ...
-            headless (bool): Run without rendering if True
+    职责:
+      - 物理仿真步进（PD 控制 → 力矩 → Isaac Gym 仿真）
+      - 观测计算（本体感知 + 地形扫描 + 特权信息 + 历史缓冲）
+      - 奖励计算（跟踪目标速度/偏航 + 正则化惩罚）
+      - 终止条件检测（翻滚/俯仰过大、高度过低、超时、到达终点）
+      - 地形课程学习（根据表现自动调节难度）
+      - 深度相机渲染和图像处理（第二阶段使用）
+
+    所有机器人（A1、Go1、XTDog）共用此类，差异通过配置（LeggedRobotCfg 子类）实现
+    """
+    def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
+        """
+        解析配置 → 创建仿真/地形/环境 → 初始化 PyTorch 缓冲区
         """
         self.cfg = cfg
         self.sim_params = sim_params
@@ -112,15 +116,21 @@ class LeggedRobot(BaseTask):
         self.post_physics_step()
 
     def step(self, actions):
-        """ Apply actions, simulate, call self.post_physics_step()
-
-        Args:
-            actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
-        actions = self.reindex(actions)
+        环境步进: 接收策略输出的动作 → 仿真 → 返回新观测/奖励/终止信号
+
+        流程:
+          1. 重排关节顺序（策略空间 → URDF 空间）
+          2. 处理动作延迟（从历史缓冲区取延迟的动作）
+          3. 裁剪动作并执行 decimation 次物理仿真步
+          4. 调用 post_physics_step 计算观测、奖励、终止
+        """
+        actions = self.reindex(actions)  # 关节重排: [FL,FR,RL,RR] → [FR,FL,RR,RL]
 
         actions.to(self.device)
+        # 更新动作历史缓冲区（用于动作延迟和历史观测）
         self.action_history_buf = torch.cat([self.action_history_buf[:, 1:].clone(), actions[:, None, :].clone()], dim=1)
+        # 动作延迟处理（模拟真实通信延迟，关键 sim-to-real 参数）
         if self.cfg.domain_rand.action_delay:
             if self.global_counter % self.cfg.domain_rand.delay_update_global_steps == 0:
                 if len(self.cfg.domain_rand.action_curr_step) != 0:
@@ -128,7 +138,7 @@ class LeggedRobot(BaseTask):
             if self.viewer:
                 self.delay = torch.tensor(self.cfg.domain_rand.action_delay_view, device=self.device, dtype=torch.float)
             indices = -self.delay -1
-            actions = self.action_history_buf[:, indices.long()] # delay for 1/50=20ms
+            actions = self.action_history_buf[:, indices.long()]  # 从历史中取延迟的动作
 
         self.global_counter += 1
         self.total_env_steps_counter += 1
@@ -136,6 +146,7 @@ class LeggedRobot(BaseTask):
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         self.render()
 
+        # 执行 decimation 次物理仿真（policy_dt = decimation × sim_dt = 4 × 5ms = 20ms）
         for _ in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions).view(self.torques.shape)
             self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
@@ -247,10 +258,6 @@ class LeggedRobot(BaseTask):
         contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
         self.contact_filt = torch.logical_or(contact, self.last_contacts) 
         self.last_contacts = contact
-
-        # 更新 feet_air_time：不接触地面时累加，着地时重置
-        self.feet_air_time += self.dt
-        self.feet_air_time *= ~self.contact_filt  # 着地的脚重置为0
         
         # self._update_jump_schedule()
         self._update_goals()
@@ -286,13 +293,21 @@ class LeggedRobot(BaseTask):
                 cv2.waitKey(1)
 
     def reindex_feet(self, vec):
+        """足部重排: URDF 顺序 [FR,FL,RR,RL] → 策略顺序 [FL,FR,RL,RR]"""
         return vec[:, [1, 0, 3, 2]]
 
     def reindex(self, vec):
+        """关节重排: URDF 顺序 [FR×3,FL×3,RR×3,RL×3] → 策略顺序 [FL×3,FR×3,RL×3,RR×3]"""
         return vec[:, [3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8]]
 
     def check_termination(self):
-        """ Check if environments need to be reset
+        """
+        检查终止条件（触发 episode reset）:
+          - 横滚角 > 1.5 rad（翻倒）
+          - 俯仰角 > 1.5 rad（翻倒）
+          - 高度 < -0.25 m（掉落）
+          - 超时（episode 时长耗尽）
+          - 到达所有路径点（完成跑酷）
         """
         self.reset_buf = torch.zeros((self.num_envs, ), dtype=torch.bool, device=self.device)
         roll_cutoff = torch.abs(self.roll) > 1.5
@@ -300,7 +315,8 @@ class LeggedRobot(BaseTask):
         reach_goal_cutoff = self.cur_goal_idx >= self.cfg.terrain.num_goals
         height_cutoff = self.root_states[:, 2] < -0.25
 
-        self.time_out_buf = self.episode_length_buf > self.max_episode_length # no terminal reward for time-outs
+        # 超时和完成都属于 time_out（不给终止惩罚，用 bootstrapping 处理）
+        self.time_out_buf = self.episode_length_buf > self.max_episode_length
         self.time_out_buf |= reach_goal_cutoff
 
         self.reset_buf |= self.time_out_buf
@@ -385,45 +401,58 @@ class LeggedRobot(BaseTask):
             self.episode_sums["termination"] += rew
     
     def compute_observations(self):
-        """ 
+        """
         Computes observations
+        构建完整观测向量 obs_buf，内存布局:
+        [obs_buf(53) | heights(132) | priv_explicit(9) | priv_latent(29) | history(10×53=530)] = 753 维
+
+        obs_buf (本体感知 53 维):
+          角速度(3) + IMU(2) + 偏航零占位(1) + 偏航差(1) + 下一偏航差(1) +
+          指令零占位(2) + 前进速度指令(1) + 环境类型标志(2) +
+          关节角度(12) + 关节角速度(12) + 上一动作(12) + 足部接触(4)
         """
         imu_obs = torch.stack((self.roll, self.pitch), dim=1)
+        # 每 5 个仿真步更新一次偏航目标（与深度图更新频率同步）
         if self.global_counter % 5 == 0:
             self.delta_yaw = self.target_yaw - self.yaw
             self.delta_next_yaw = self.next_target_yaw - self.yaw
-        obs_buf = torch.cat((#skill_vector, 
-                            self.base_ang_vel  * self.obs_scales.ang_vel,   #[1,3]
-                            imu_obs,    #[1,2]
-                            0*self.delta_yaw[:, None], 
-                            self.delta_yaw[:, None],
-                            self.delta_next_yaw[:, None],
-                            0*self.commands[:, 0:2], 
-                            self.commands[:, 0:1],  #[1,1]
-                            (self.env_class != 17).float()[:, None], 
-                            (self.env_class == 17).float()[:, None],
-                            self.reindex((self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos),
-                            self.reindex(self.dof_vel * self.obs_scales.dof_vel),
-                            self.reindex(self.action_history_buf[:, -1]),
-                            self.reindex_feet(self.contact_filt.float()-0.5),
+        obs_buf = torch.cat((
+                            self.base_ang_vel  * self.obs_scales.ang_vel,   # 角速度 [3]
+                            imu_obs,                                         # IMU 横滚+俯仰 [2]
+                            0*self.delta_yaw[:, None],                       # 零占位（历史兼容）[1]
+                            self.delta_yaw[:, None],                         # 到当前目标的偏航差 [1]
+                            self.delta_next_yaw[:, None],                    # 到下一目标的偏航差 [1]
+                            0*self.commands[:, 0:2],                         # 零占位（历史兼容）[2]
+                            self.commands[:, 0:1],                           # 前进速度指令 [1]
+                            (self.env_class != 17).float()[:, None],         # 非跑酷地形标志 [1]
+                            (self.env_class == 17).float()[:, None],         # 跑酷地形标志 [1]（env_class=17 是 parkour_flat）
+                            self.reindex((self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos),  # 关节角度偏差 [12]
+                            self.reindex(self.dof_vel * self.obs_scales.dof_vel),    # 关节角速度 [12]
+                            self.reindex(self.action_history_buf[:, -1]),             # 上一步动作 [12]
+                            self.reindex_feet(self.contact_filt.float()-0.5),         # 足部接触状态（居中）[4]
                             ),dim=-1)
+        # 特权显式信息（9维）: 真实线速度(3) + 零占位(6)
         priv_explicit = torch.cat((self.base_lin_vel * self.obs_scales.lin_vel,
                                    0 * self.base_lin_vel,
                                    0 * self.base_lin_vel), dim=-1)
+        # 特权隐式信息（29维）: 质量参数(4) + 摩擦系数(1) + 电机强度偏差(12+12)
         priv_latent = torch.cat((
             self.mass_params_tensor,
             self.friction_coeffs_tensor,
-            self.motor_strength[0] - 1, 
+            self.motor_strength[0] - 1,
             self.motor_strength[1] - 1
         ), dim=-1)
+        # 拼接完整观测: [proprio | scandots | priv_explicit | priv_latent | history]
         if self.cfg.terrain.measure_heights:
             heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.3 - self.measured_heights, -1, 1.)
             self.obs_buf = torch.cat([obs_buf, heights, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
         else:
             self.obs_buf = torch.cat([obs_buf, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+        # 在存入历史缓冲前，遮蔽偏航信息（防止偏航目标泄露到历史编码器）
         obs_buf[:, 6:8] = 0  # mask yaw in proprioceptive history
+        # 更新历史观测缓冲区（episode 开始时全部填充当前帧，之后滑动窗口）
         self.obs_history_buf = torch.where(
-            (self.episode_length_buf <= 1)[:, None, None], 
+            (self.episode_length_buf <= 1)[:, None, None],
             torch.stack([obs_buf] * self.cfg.env.history_len, dim=1),
             torch.cat([
                 self.obs_history_buf[:, 1:],
@@ -431,6 +460,7 @@ class LeggedRobot(BaseTask):
             ], dim=1)
         )
 
+        # 更新接触历史缓冲区
         self.contact_buf = torch.where(
             (self.episode_length_buf <= 1)[:, None, None], 
             torch.stack([self.contact_filt.float()] * self.cfg.env.contact_buf_len, dim=1),
@@ -588,7 +618,12 @@ class LeggedRobot(BaseTask):
         self.commands[env_ids, :2] *= torch.abs(self.commands[env_ids, 0:1]) > self.cfg.commands.lin_vel_clip
 
     def _compute_torques(self, actions):
-        """ Compute torques from actions.
+        """
+        从策略动作计算关节力矩（PD 控制器）
+        公式: torque = Kp × (action_scale × action + default_angle - current_angle) - Kd × angular_velocity
+        电机随机化时: torque = strength_p × Kp × (...) - strength_d × Kd × (...)
+        
+        Compute torques from actions.
             Actions can be interpreted as position or velocity targets given to a PD controller, or directly as scaled torques.
             [NOTE]: torques must have the same dimension as the number of DOFs, even if some DOFs are not actuated.
 
@@ -598,7 +633,6 @@ class LeggedRobot(BaseTask):
         Returns:
             [torch.Tensor]: Torques sent to the simulation
         """
-        #pd controller
         actions_scaled = actions * self.cfg.control.action_scale
         control_type = self.cfg.control.control_type
         if control_type=="P":
@@ -675,21 +709,24 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): ids of environments being reset
         """
+        # === 地形课程学习 ===
+        # 根据机器人走过的距离与目标距离的比值，调整难度级别
         # Implement Terrain curriculum
         if not self.init_done:
             # don't change on initial reset
             return
-        
+
         dis_to_origin = torch.norm(self.root_states[env_ids, :2] - self.env_origins[env_ids, :2], dim=1)
         threshold = self.commands[env_ids, 0] * self.cfg.env.episode_length_s
-        move_up =dis_to_origin > 0.8*threshold
-        move_down = dis_to_origin < 0.4*threshold
+        move_up = dis_to_origin > 0.8*threshold    # 走过 >80% 目标距离 → 升级
+        move_down = dis_to_origin < 0.4*threshold  # 走过 <40% 目标距离 → 降级
 
         self.terrain_levels[env_ids] += 1 * move_up - 1 * move_down
+        # 达到最高难度的机器人随机分配到较低难度
         # # Robots that solve the last level are sent to a random one
         self.terrain_levels[env_ids] = torch.where(self.terrain_levels[env_ids]>=self.max_terrain_level,
                                                    torch.randint_like(self.terrain_levels[env_ids], self.max_terrain_level),
-                                                   torch.clip(self.terrain_levels[env_ids], 0)) # (the minumum level is zero)
+                                                   torch.clip(self.terrain_levels[env_ids], 0))
         self.env_origins[env_ids] = self.terrain_origins[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
         self.env_class[env_ids] = self.terrain_class[self.terrain_levels[env_ids], self.terrain_types[env_ids]]
         
@@ -1225,9 +1262,12 @@ class LeggedRobot(BaseTask):
 
         return heights.view(self.num_envs, -1) * self.terrain.cfg.vertical_scale
 
-    ################## parkour rewards ##################
+    ################## 跑酷奖励函数 ##################
+    # 每个函数名称对应 rewards.scales 中的一个 key
+    # 返回值会乘以 reward_scales[name]（已预乘 dt）
 
     def _reward_tracking_goal_vel(self):
+        """速度跟踪奖励: 鼓励机器人沿朝向目标路径点的方向移动，速度不超过指令速度"""
         norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
         target_vec_norm = self.target_pos_rel / (norm + 1e-5)
         cur_vel = self.root_states[:, 7:9]
@@ -1235,60 +1275,64 @@ class LeggedRobot(BaseTask):
         return rew
 
     def _reward_tracking_yaw(self):
+        """偏航角跟踪奖励: 鼓励机器人面朝目标方向，exp(-|偏航误差|)"""
         rew = torch.exp(-torch.abs(self.target_yaw - self.yaw))
         return rew
-    
+
     def _reward_lin_vel_z(self):
+        """垂直速度惩罚: 抑制弹跳（非跑酷地形惩罚减半）"""
         rew = torch.square(self.base_lin_vel[:, 2])
         rew[self.env_class != 17] *= 0.5
         return rew
-    
+
     def _reward_ang_vel_xy(self):
+        """横滚/俯仰角速度惩罚: 鼓励平稳运动"""
         return torch.sum(torch.square(self.base_ang_vel[:, :2]), dim=1)
-     
+
     def _reward_orientation(self):
+        """姿态偏差惩罚: 仅在跑酷地形上生效"""
         rew = torch.sum(torch.square(self.projected_gravity[:, :2]), dim=1)
         rew[self.env_class != 17] = 0.
         return rew
 
     def _reward_dof_acc(self):
+        """关节加速度惩罚: 鼓励平滑运动"""
         return torch.sum(torch.square((self.last_dof_vel - self.dof_vel) / self.dt), dim=1)
 
     def _reward_collision(self):
+        """碰撞惩罚: 身体/大腿/小腿碰到障碍物"""
         return torch.sum(1.*(torch.norm(self.contact_forces[:, self.penalised_contact_indices, :], dim=-1) > 0.1), dim=1)
 
     def _reward_action_rate(self):
+        """动作变化率惩罚: 鼓励平滑控制信号"""
         return torch.norm(self.last_actions - self.actions, dim=1)
 
     def _reward_delta_torques(self):
+        """力矩变化惩罚"""
         return torch.sum(torch.square(self.torques - self.last_torques), dim=1)
-    
+
     def _reward_torques(self):
+        """力矩大小惩罚: 鼓励节能"""
         return torch.sum(torch.square(self.torques), dim=1)
 
     def _reward_hip_pos(self):
+        """髋关节位置惩罚: 防止劈叉"""
         return torch.sum(torch.square(self.dof_pos[:, self.hip_indices] - self.default_dof_pos[:, self.hip_indices]), dim=1)
 
     def _reward_dof_error(self):
+        """关节角度误差惩罚: 鼓励回到默认姿态"""
         dof_error = torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1)
         return dof_error
-    
-    def _reward_feet_air_time(self):
-        # 奖励四条腿交替接触地面，鼓励对称步态
-        # 当某只脚刚着地(contact_filt为True)且air_time在合理范围内(~0.2s)时给予奖励
-        # 惩罚air_time过长的腿（说明一直抬着不着地）
-        first_contact = (self.feet_air_time > 0) * self.contact_filt
-        rew = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1)
-        return rew
 
     def _reward_feet_stumble(self):
-        # Penalize feet hitting vertical surfaces
+        """绊倒惩罚: 足部水平力远大于垂直力（撞到垂直面）"""
         rew = torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\
              4 *torch.abs(self.contact_forces[:, self.feet_indices, 2]), dim=1)
         return rew.float()
 
     def _reward_feet_edge(self):
-        feet_pos_xy = ((self.rigid_body_states[:, self.feet_indices, :2] + self.terrain.cfg.border_size) / self.cfg.terrain.horizontal_scale).round().long()  # (num_envs, 4, 2)
+        """踩边缘惩罚: 足部踩在地形边缘上（仅难度>3时生效）"""
+        feet_pos_xy = ((self.rigid_body_states[:, self.feet_indices, :2] + self.terrain.cfg.border_size) / self.cfg.terrain.horizontal_scale).round().long()
         feet_pos_xy[..., 0] = torch.clip(feet_pos_xy[..., 0], 0, self.x_edge_mask.shape[0]-1)
         feet_pos_xy[..., 1] = torch.clip(feet_pos_xy[..., 1], 0, self.x_edge_mask.shape[1]-1)
         feet_at_edge = self.x_edge_mask[feet_pos_xy[..., 0], feet_pos_xy[..., 1]]
