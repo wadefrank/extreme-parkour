@@ -9,7 +9,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from legged_gym.utils.task_registry import task_registry
 from legged_gym.utils.terrain import Terrain
 
 
@@ -37,6 +36,8 @@ def load_cfg_from_spec(spec):
 
 def load_cfg(task_name=None, cfg_spec=None):
     if task_name:
+        from legged_gym.utils.task_registry import task_registry
+
         env_cfg, _ = task_registry.get_cfgs(task_name)
         return deepcopy(env_cfg)
     if cfg_spec:
