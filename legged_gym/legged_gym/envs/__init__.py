@@ -41,6 +41,7 @@ from .a1.a1_config import A1RoughCfg, A1RoughCfgPPO
 from .a1.a1_parkour_config import A1ParkourCfg, A1ParkourCfgPPO
 from .go1.go1_config import Go1RoughCfg, Go1RoughCfgPPO
 from .xt_dog.xt_parkour_config import XTDogParkourCfg, XTDogParkourCfgPPO
+from .xt_dog.xt_parkour_config_2 import XTDogParkourStage2Cfg, XTDogParkourStage2CfgPPO
 
 import os
 
@@ -53,3 +54,4 @@ from legged_gym.utils.task_registry import task_registry
 task_registry.register( "a1", LeggedRobot, A1ParkourCfg(), A1ParkourCfgPPO() )
 task_registry.register( "go1", LeggedRobot, Go1RoughCfg(), Go1RoughCfgPPO() )
 task_registry.register( "xt_dog", LeggedRobot, XTDogParkourCfg(), XTDogParkourCfgPPO() )
+task_registry.register( "xt_dog_stage2", LeggedRobot, XTDogParkourStage2Cfg(), XTDogParkourStage2CfgPPO() )

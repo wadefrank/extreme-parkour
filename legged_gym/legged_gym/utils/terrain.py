@@ -40,6 +40,10 @@ import pyfqmr
 from scipy.ndimage import binary_dilation
 
 
+def lerp_by_difficulty(bounds, difficulty):
+    return bounds[0] + (bounds[1] - bounds[0]) * difficulty
+
+
 class Terrain:
     def __init__(self, cfg: LeggedRobotCfg.terrain, num_robots) -> None:
         self.cfg = cfg
@@ -270,50 +274,64 @@ class Terrain:
             self.add_roughness(terrain)
         elif choice < self.proportions[15]:
             idx = 16
+            hurdle_stone_len = getattr(self.cfg, "parkour_hurdle_stone_len", [0.1, 0.4])
+            hurdle_height_low = getattr(self.cfg, "parkour_hurdle_height_low", [0.1, 0.2])
+            hurdle_height_high = getattr(self.cfg, "parkour_hurdle_height_high", [0.15, 0.4])
             parkour_hurdle_terrain(terrain,
                                    num_stones=self.num_goals - 2,
-                                   stone_len=0.1+0.3*difficulty,
-                                   hurdle_height_range=[0.1+0.1*difficulty, 0.15+0.25*difficulty],
+                                   stone_len=lerp_by_difficulty(hurdle_stone_len, difficulty),
+                                   hurdle_height_range=[
+                                       lerp_by_difficulty(hurdle_height_low, difficulty),
+                                       lerp_by_difficulty(hurdle_height_high, difficulty),
+                                   ],
                                    pad_height=0,
-                                   x_range=[1.2, 2.2],
+                                   x_range=getattr(self.cfg, "parkour_hurdle_x_range", [1.2, 2.2]),
                                    y_range=self.cfg.y_range,
-                                   half_valid_width=[0.4, 0.8],
+                                   half_valid_width=getattr(self.cfg, "parkour_hurdle_half_valid_width", [0.4, 0.8]),
                                    )
             # terrain.height_field_raw[:] = 0
             self.add_roughness(terrain)
         elif choice < self.proportions[16]:
             idx = 17
+            flat_stone_len = getattr(self.cfg, "parkour_flat_stone_len", [0.1, 0.4])
+            flat_height_low = getattr(self.cfg, "parkour_flat_hurdle_height_low", [0.1, 0.2])
+            flat_height_high = getattr(self.cfg, "parkour_flat_hurdle_height_high", [0.15, 0.3])
             parkour_hurdle_terrain(terrain,
                                    num_stones=self.num_goals - 2,
-                                   stone_len=0.1+0.3*difficulty,
-                                   hurdle_height_range=[0.1+0.1*difficulty, 0.15+0.15*difficulty],
+                                   stone_len=lerp_by_difficulty(flat_stone_len, difficulty),
+                                   hurdle_height_range=[
+                                       lerp_by_difficulty(flat_height_low, difficulty),
+                                       lerp_by_difficulty(flat_height_high, difficulty),
+                                   ],
                                    pad_height=0,
                                    y_range=self.cfg.y_range,
-                                   half_valid_width=[0.45, 1],
+                                   half_valid_width=getattr(self.cfg, "parkour_flat_half_valid_width", [0.45, 1]),
                                    flat=True
                                    )
             self.add_roughness(terrain)
         elif choice < self.proportions[17]:
             idx = 18
+            step_height = getattr(self.cfg, "parkour_step_height", [0.1, 0.45])
             parkour_step_terrain(terrain,
                                    num_stones=self.num_goals - 2,
-                                   step_height=0.1 + 0.35*difficulty,
-                                   x_range=[0.3,1.5],
+                                   step_height=lerp_by_difficulty(step_height, difficulty),
+                                   x_range=getattr(self.cfg, "parkour_step_x_range", [0.3, 1.5]),
                                    y_range=self.cfg.y_range,
-                                   half_valid_width=[0.5, 1],
+                                   half_valid_width=getattr(self.cfg, "parkour_step_half_valid_width", [0.5, 1]),
                                    pad_height=0,
                                    )
             self.add_roughness(terrain)
         elif choice < self.proportions[18]:
             idx = 19
+            gap_size = getattr(self.cfg, "parkour_gap_size", [0.1, 0.8])
             parkour_gap_terrain(terrain,
                                 num_gaps=self.num_goals - 2,
-                                gap_size=0.1 + 0.7 * difficulty,
+                                gap_size=lerp_by_difficulty(gap_size, difficulty),
                                 gap_depth=[0.2, 1],
                                 pad_height=0,
-                                x_range=[0.8, 1.5],
+                                x_range=getattr(self.cfg, "parkour_gap_x_range", [0.8, 1.5]),
                                 y_range=self.cfg.y_range,
-                                half_valid_width=[0.6, 1.2],
+                                half_valid_width=getattr(self.cfg, "parkour_gap_half_valid_width", [0.6, 1.2]),
                                 # flat=True
                                 )
             self.add_roughness(terrain)

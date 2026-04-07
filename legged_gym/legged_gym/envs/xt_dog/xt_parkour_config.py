@@ -59,22 +59,72 @@ class XTDogParkourCfg( LeggedRobotCfg ):
         control_type = 'P'
         # XTDog ~28kg，约为A1(12kg)的2.3倍
         # 保持较高刚度以支撑体重，阻尼接近临界阻尼
-        stiffness = {'joint': 80.0}  # [N*m/rad]
-        damping = {'joint': 3.0}     # [N*m*s/rad] 提高阻尼，28kg需要更强阻尼抑制振荡
+        stiffness = {'joint': 90.0}  # [N*m/rad]
+        damping = {'joint': 2.0}     # [N*m*s/rad] 提高阻尼，28kg需要更强阻尼抑制振荡
         # 最大力矩 = 80 * 0.25 * 1.2 = 24 N·m (URDF限制40 N·m)
-        action_scale = 0.25
+        action_scale = 0.32
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
 
     class depth( LeggedRobotCfg.depth ):
         position = [0.31, 0, 0.03]  # XTDog体型更大，相机位置前移（A1为0.27）
 
+    class terrain( LeggedRobotCfg.terrain ):
+        # XTDog 机身更长更宽，先降低横向随机和地面粗糙度，让策略先学会直线起跳。
+        y_range = [-0.2, 0.2]
+        height = [0.01, 0.04]
+        max_init_terrain_level = 2
+        num_rows = 8
+
+        # 训练前期降低 flat 占比，提高 hurdle / gap 占比，减少“慢慢走过去”的机会。
+        terrain_dict = {"smooth slope": 0.,
+                        "rough slope up": 0.0,
+                        "rough slope down": 0.0,
+                        "rough stairs up": 0.,
+                        "rough stairs down": 0.,
+                        "discrete": 0.,
+                        "stepping stones": 0.0,
+                        "gaps": 0.,
+                        "smooth flat": 0.,
+                        "pit": 0.0,
+                        "wall": 0.0,
+                        "platform": 0.,
+                        "large stairs up": 0.,
+                        "large stairs down": 0.,
+                        "parkour": 0.10,
+                        "parkour_hurdle": 0.30,
+                        "parkour_flat": 0.10,
+                        "parkour_step": 0.20,
+                        "parkour_gap": 0.30,
+                        "demo": 0.0,}
+        terrain_proportions = list(terrain_dict.values())
+
+        # 下面这些覆盖只给 XTDog 用，terrain.py 里通过 getattr 读取。
+        parkour_hurdle_stone_len = [0.18, 0.58]
+        parkour_hurdle_height_low = [0.08, 0.16]
+        parkour_hurdle_height_high = [0.12, 0.30]
+        parkour_hurdle_x_range = [1.5, 2.7]
+        parkour_hurdle_half_valid_width = [0.55, 1.0]
+
+        parkour_flat_stone_len = [0.18, 0.58]
+        parkour_flat_hurdle_height_low = [0.08, 0.16]
+        parkour_flat_hurdle_height_high = [0.12, 0.22]
+        parkour_flat_half_valid_width = [0.60, 1.10]
+
+        parkour_step_height = [0.08, 0.36]
+        parkour_step_x_range = [0.5, 1.8]
+        parkour_step_half_valid_width = [0.60, 1.10]
+
+        parkour_gap_size = [0.18, 0.95]
+        parkour_gap_x_range = [1.0, 1.8]
+        parkour_gap_half_valid_width = [0.70, 1.30]
+
     class asset( LeggedRobotCfg.asset ):
         file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/xt_dog/urdf/xt_dog.urdf'
         name = "xt_dog"
         foot_name = "foot"
         penalize_contacts_on = ["thigh", "calf", "base"]
-        terminate_after_contacts_on = ["base"]
+        terminate_after_contacts_on = ["base"]#, "thigh", "calf"]
         self_collisions = 1 # 1 to disable, 0 to enable...bitwise filter
         flip_visual_attachments = False
 
@@ -85,15 +135,6 @@ class XTDogParkourCfg( LeggedRobotCfg ):
     class rewards( LeggedRobotCfg.rewards ):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.35
-        class scales( LeggedRobotCfg.rewards.scales ):
-            # 加强关节误差惩罚，阻止腿部偏离默认姿态
-            dof_error = -0.1
-            # 加强hip惩罚，防止髋关节偏移过大
-            hip_pos = -1.0
-            # 加强动作平滑度惩罚
-            action_rate = -0.2
-            # 足底接触时间奖励，鼓励四腿交替着地
-            feet_air_time = 0.5
 
 class XTDogParkourCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
