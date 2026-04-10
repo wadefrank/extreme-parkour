@@ -266,11 +266,11 @@ class Terrain:
             last_incline_height = incline_height + 0.1 - 0.1*difficulty
             parkour_terrain(terrain,
                             num_stones=self.num_goals - 2,
-                            x_range=x_range, 
+                            x_range=x_range,
                             y_range=y_range,
                             incline_height=incline_height,
                             stone_len=stone_len,
-                            stone_width=1.0, 
+                            stone_width=1.3,
                             last_incline_height=last_incline_height,
                             pad_height=0,
                             pit_depth=[0.2, 1])
