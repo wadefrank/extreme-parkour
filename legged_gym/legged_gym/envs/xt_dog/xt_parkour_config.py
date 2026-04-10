@@ -73,7 +73,7 @@ class XTDogParkourCfg( LeggedRobotCfg ):
         # XTDog 机身更长更宽，先降低横向随机和地面粗糙度，让策略先学会直线起跳。
         y_range = [-0.2, 0.2]
         height = [0.01, 0.04]
-        max_init_terrain_level = 2
+        max_init_terrain_level = 0
         num_rows = 8
 
         # 保持 12×11=132 维度不变（无需改 n_scan），但覆盖更大范围以匹配 xt_dog 体型
@@ -89,17 +89,17 @@ class XTDogParkourCfg( LeggedRobotCfg ):
                         “discrete”: 0.,
                         “stepping stones”: 0.0,
                         “gaps”: 0.,
-                        “smooth flat”: 0.05,
+                        “smooth flat”: 0.15,
                         “pit”: 0.0,
                         “wall”: 0.0,
                         “platform”: 0.,
                         “large stairs up”: 0.,
                         “large stairs down”: 0.,
                         “parkour”: 0.10,
-                        “parkour_hurdle”: 0.25,
+                        “parkour_hurdle”: 0.20,
                         “parkour_flat”: 0.10,
                         “parkour_step”: 0.20,
-                        “parkour_gap”: 0.30,
+                        “parkour_gap”: 0.25,
                         “demo”: 0.0,}
         terrain_proportions = list(terrain_dict.values())
 
@@ -147,14 +147,27 @@ class XTDogParkourCfg( LeggedRobotCfg ):
         soft_dof_pos_limit = 0.9
         base_height_target = 0.35
         class scales( LeggedRobotCfg.rewards.scales ):
-            # 力矩/加速度相关惩罚按质量比缩小，避免 28kg 机器人策略过于保守
-            torques = -0.000004         # base: -0.00001，力矩更大，惩罚缩小
-            delta_torques = -4.0e-8     # base: -1.0e-7
-            dof_acc = -1.0e-7           # base: -2.5e-7
-            # 跟踪奖励适当降低，重机器人响应较慢
-            tracking_goal_vel = 1.2     # base: 1.5
-            # 碰撞惩罚保持，体型大更容易碰
-            collision = -10.
+            # === 正奖励：加大激励 ===
+            tracking_goal_vel = 2.0     # 1.2→2.0，给更强的前进激励
+            tracking_yaw = 0.5          # 保持
+
+            # === 最大惩罚项：大幅缩小 ===
+            collision = -2.             # -10→-2，原值-1.2量级，体型大初期碰撞不可避免
+            action_rate = -0.01         # base -0.1→-0.01，原值-0.35量级，允许探索
+            dof_acc = -5.0e-8           # base -2.5e-7→5e-8，原值-0.08量级
+
+            # === 中等惩罚项：减半 ===
+            ang_vel_xy = -0.02          # base -0.05→-0.02
+            lin_vel_z = -0.5            # base -1.0→-0.5
+            hip_pos = -0.2             # base -0.5→-0.2
+            dof_error = -0.02           # base -0.04→-0.02
+            orientation = -0.5          # base -1.0→-0.5
+
+            # === 小惩罚项：缩小 ===
+            torques = -0.000002         # base -0.00001
+            delta_torques = -2.0e-8     # base -1.0e-7
+            feet_stumble = -0.5         # base -1.0
+            feet_edge = -0.5            # base -1.0
 
 class XTDogParkourCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
