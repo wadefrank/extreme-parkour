@@ -80,6 +80,16 @@ class XTDogParkourCfg( LeggedRobotCfg ):
         measured_points_x = [-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6]
         measured_points_y = [-0.9, -0.72, -0.54, -0.36, -0.18, 0., 0.18, 0.36, 0.54, 0.72, 0.9]
 
+        # 先只用 parkour_flat 学走路，稳定后再加入其他地形
+        terrain_dict = {"smooth slope": 0., "rough slope up": 0., "rough slope down": 0.,
+                        "rough stairs up": 0., "rough stairs down": 0., "discrete": 0.,
+                        "stepping stones": 0., "gaps": 0., "smooth flat": 0.,
+                        "pit": 0., "wall": 0., "platform": 0.,
+                        "large stairs up": 0., "large stairs down": 0.,
+                        "parkour": 0., "parkour_hurdle": 0.,
+                        "parkour_flat": 1.0,
+                        "parkour_step": 0., "parkour_gap": 0., "demo": 0.}
+        terrain_proportions = list(terrain_dict.values())
 
         # 下面这些覆盖只给 XTDog 用，terrain.py 里通过 getattr 读取。
         parkour_hurdle_stone_len = [0.18, 0.58]
