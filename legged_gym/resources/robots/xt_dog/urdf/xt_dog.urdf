@@ -46,7 +46,7 @@
   </link>
   <link name="camera_box">
     <visual>
-      <origin rpy="0 0 0" xyz="0.27 0 0.03"/>
+      <origin rpy="0 0 0" xyz="0.31 0 0.03"/>
       <geometry>
         <box size="0.025 0.09 0.025"/>
       </geometry>
@@ -113,7 +113,7 @@
     <limit
       lower="-0.7854 "
       upper="0.7854"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -171,7 +171,7 @@
     <limit
        lower="-1.8326"
       upper="1.8326"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -229,7 +229,7 @@
     <limit
       lower="-1.8326"
       upper="0.5236"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -341,7 +341,7 @@
     <limit
     lower="-0.7854 "
       upper="0.7854"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -399,7 +399,7 @@
     <limit
       lower="-1.8326"
       upper="1.8326"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -457,7 +457,7 @@
     <limit
      lower="-1.8326"
       upper="0.5236"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -569,7 +569,7 @@
     <limit
      lower="-0.7854 "
       upper="0.7854"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -627,7 +627,7 @@
     <limit
        lower="-1.8326"
       upper="1.8326"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -685,7 +685,7 @@
     <limit
      lower="-1.8326"
       upper="0.5236"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -797,7 +797,7 @@
     <limit
      lower="-0.7854 "
       upper="0.7854"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -855,7 +855,7 @@
     <limit
        lower="-1.8326"
       upper="1.8326"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
@@ -913,7 +913,7 @@
     <limit
     lower="-1.8326"
       upper="0.5236"
-      effort="40"
+      effort="80"
       velocity="20" />
   </joint>
   <link
