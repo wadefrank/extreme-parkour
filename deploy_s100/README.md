@@ -135,9 +135,12 @@ obs [1, 753]  +  depth_latent [1, 32]
 
 #### 4.1 导出 CNN Backbone 为 ONNX
 
+CNN — 看。把深度图压缩成 32 维视觉特征，回答"前面地形长什么样"
+
 ```bash
 pip install onnxruntime
 cd deploy_s100/export
+# python export_cnn_onnx.py --exptid 014-00-distill --checkpoint 2100
 python export_cnn_onnx.py --exptid xxx-xx --checkpoint 10000
 ```
 
@@ -148,7 +151,10 @@ python export_cnn_onnx.py --exptid xxx-xx --checkpoint 10000
 
 #### 4.2 导出 GRU 模块为 ONNX
 
+GRU — 记。结合当前视觉 + 当前体感 + 之前的记忆，理解地形的时序变化（比如"正在接近台阶"），同时修正偏航角
+
 ```bash
+# python export_gru_onnx.py --exptid 014-00-distill --checkpoint 2100
 python export_gru_onnx.py --exptid xxx-xx --checkpoint 10000
 ```
 
@@ -158,10 +164,16 @@ python export_gru_onnx.py --exptid xxx-xx --checkpoint 10000
 
 #### 4.3 导出基础策略 (复用现有脚本)
 
+策略网络 — 决策。综合视觉理解、身体状态、历史动作，输出 12 个关节该怎么动
+
 ```bash
+# cd /root/wade/extreme-parkour/legged_gym/legged_gym/scripts
 cd ../../legged_gym/legged_gym/scripts
+# python save_jit.py --exptid 014-00-distill --checkpoint 2100
+# Saved traced_actor at  /root/wade/extreme-parkour/legged_gym/logs/parkour_new/014-00-distill/traced/014-00-distill-2100-base_jit.pt
 python save_jit.py --exptid xxx-xx --checkpoint 10000
 # 将 base_jit.pt 复制到 deploy_s100/models/
+cp /root/wade/extreme-parkour/legged_gym/logs/parkour_new/014-00-distill/traced/014-00-distill-2100-base_jit.pt /root/wade/extreme-parkour/deploy_s100/models/
 ```
 
 #### 4.4 收集量化校准数据
@@ -169,15 +181,18 @@ python save_jit.py --exptid xxx-xx --checkpoint 10000
 ```bash
 cd deploy_s100/export
 # 从仿真收集 (需要 Isaac Gym 环境)
+# python collect_calibration.py --exptid 014-00-distill --num_frames 200
 python collect_calibration.py --exptid xxx-xx --num_frames 200
 
 # 或生成合成数据 (无需 Isaac Gym)
+# python collect_calibration.py --synthetic --num_frames 200
 python collect_calibration.py --synthetic --num_frames 200
 ```
 
 #### 4.5 数值验证
 
 ```bash
+# python validate_exports.py --exptid 014-00-distill --checkpoint 2100
 python validate_exports.py --exptid xxx-xx --checkpoint 10000
 ```
 
