@@ -1,24 +1,26 @@
 # S100 BPU 模型转换配置
-# 用于将 CNN backbone ONNX 模型转换为 BPU 可运行的 .bin 格式
-# 使用 hb_mapper makertbin 命令执行转换
+# 使用 hb_compile 命令执行转换
+# 参考: https://toolchain.d-robotics.cc/guide/ptq/ptq_tool/hb_compile/convert.html
 
 model_parameters:
   onnx_model: '../models/cnn_backbone_sim.onnx'
-  march: 'bernoulli2'           # S100 BPU 架构
-  input_type_train: 'featuremap'
+  march: 'nash-e'                   # S100 BPU 架构
+  output_model_file_prefix: 'cnn_backbone'
+  working_dir: './model_output'
+
+input_parameters:
+  input_name: 'depth_image'
+  input_type_train: 'featuremap'    # 非图像输入，使用 featuremap
   input_layout_train: 'NCHW'
   input_type_rt: 'featuremap'
   input_shape: '1x1x58x87'
-  norm_type: 'none'             # 预处理在代码中完成
 
 calibration_parameters:
   cal_data_dir: './calibration_data'
-  calibration_type: 'default'
-  # 可选: 如果默认量化精度不够，尝试以下选项
-  # calibration_type: 'kl'       # KL 散度校准
-  # per_channel: true            # 逐通道量化
+  # 每个 .npy 文件为一个样本, shape [1, 1, 58, 87]
 
 compiler_parameters:
-  optimize_level: 'O3'
+  compile_mode: 'latency'
   core_num: 1
-  debug: false
+  optimize_level: 'O2'
+  jobs: 8

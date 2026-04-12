@@ -206,6 +206,7 @@ python validate_exports.py --exptid xxx-xx --checkpoint 10000
 #### 4.6 ONNX 简化 + BPU 编译
 
 ```bash
+pip install onnx-simplifier
 cd deploy_s100/convert
 bash convert.sh
 ```

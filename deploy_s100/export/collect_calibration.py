@@ -81,10 +81,13 @@ def main(args):
             print("\nFalling back to synthetic data...")
             data = generate_synthetic(args.num_frames)
 
-    output_path = os.path.join(output_dir, "depth_images.npy")
-    np.save(output_path, data)
-    print(f"Calibration data saved: {os.path.abspath(output_path)}")
-    print(f"  Shape: {data.shape}")
+    # hb_compile 要求每个样本为独立 .npy 文件, shape 与 input_shape 一致 [1,1,58,87]
+    for i in range(data.shape[0]):
+        sample_path = os.path.join(output_dir, f"sample_{i:04d}.npy")
+        np.save(sample_path, data[i:i+1])  # [1, 1, 58, 87]
+    print(f"Calibration data saved: {os.path.abspath(output_dir)}")
+    print(f"  Num samples: {data.shape[0]}")
+    print(f"  Per-sample shape: {data[0:1].shape}")
     print(f"  Range: [{data.min():.3f}, {data.max():.3f}]")
     print(f"  Mean: {data.mean():.3f}, Std: {data.std():.3f}")
 

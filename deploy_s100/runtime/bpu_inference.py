@@ -1,6 +1,6 @@
 """
 S100 BPU 推理封装
-加载量化后的 CNN backbone .bin 模型，在 BPU 上执行推理
+加载量化后的 CNN backbone .hbm 模型，在 BPU 上执行推理
 支持 hobot_dnn (S100 Python API) 和 onnxruntime (开发机 fallback)
 """
 import numpy as np
@@ -13,14 +13,14 @@ class BPUInference:
     def __init__(self, model_path: str, backend: str = "auto"):
         """
         Args:
-            model_path: .bin (BPU) 或 .onnx (fallback) 模型路径
+            model_path: .hbm (BPU) 或 .onnx (fallback) 模型路径
             backend: "bpu", "onnx", 或 "auto" (自动检测)
         """
         self.model_path = model_path
         self._model = None
 
         if backend == "auto":
-            backend = "bpu" if model_path.endswith(".bin") else "onnx"
+            backend = "bpu" if model_path.endswith((".hbm", ".bin")) else "onnx"
 
         self.backend = backend
         self._init_model()
