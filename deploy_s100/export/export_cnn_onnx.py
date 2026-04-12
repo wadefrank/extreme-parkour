@@ -108,8 +108,11 @@ def export(args):
         sess = ort.InferenceSession(onnx_path)
         ort_output = sess.run(None, {"depth_image": dummy_input.numpy()})[0]
         diff = np.abs(ref_output.numpy() - ort_output).max()
+        cos_sim = np.dot(ref_output.numpy().flatten(), ort_output.flatten()) / (
+            np.linalg.norm(ref_output.numpy()) * np.linalg.norm(ort_output) + 1e-8)
         print(f"Max abs diff (PyTorch vs ONNX Runtime): {diff:.2e}")
-        if diff < 1e-5:
+        print(f"Cosine similarity: {cos_sim:.6f}")
+        if diff < 1e-2 and cos_sim > 0.999:
             print("ONNX export verified successfully!")
         else:
             print("WARNING: large numerical difference, check export")

@@ -136,6 +136,7 @@ obs [1, 753]  +  depth_latent [1, 32]
 #### 4.1 导出 CNN Backbone 为 ONNX
 
 ```bash
+pip install onnxruntime
 cd deploy_s100/export
 python export_cnn_onnx.py --exptid xxx-xx --checkpoint 10000
 ```
