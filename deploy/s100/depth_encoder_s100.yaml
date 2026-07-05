@@ -22,6 +22,33 @@ calibration_parameters:
         metric: 'chebyshev'
       layerwise_search:
         metric: 'chebyshev'
+    node_config:
+      '/base_backbone/image_compression/image_compression.0/Conv':
+        input1: 'ec'
+      '/base_backbone/image_compression/image_compression.3/Conv':
+        input1: 'ec'
+      '/base_backbone/image_compression/image_compression.6/Gemm':
+        input1: 'ec'
+      '/base_backbone/image_compression/image_compression.8/Gemm':
+        input1: 'ec'
+      '/combination_mlp/combination_mlp.0/Gemm':
+        input1: 'ec'
+      '/combination_mlp/combination_mlp.2/Gemm':
+        input1: 'ec'
+      '/rnn/GRU_split_to_forward_x_matmul_w0':
+        input1: 'ec'
+      '/rnn/GRU_split_to_forward_x_matmul_w1':
+        input1: 'ec'
+      '/rnn/GRU_split_to_forward_x_matmul_w2':
+        input1: 'ec'
+      '/rnn/GRU_split_to_forward_z0_h_matmul_r':
+        input1: 'ec'
+      '/rnn/GRU_split_to_forward_r0_h_matmul_r':
+        input1: 'ec'
+      '/rnn/GRU_split_to_forward_h0_h_matmul_r':
+        input1: 'ec'
+      '/output_mlp/output_mlp.0/Gemm':
+        input1: 'ec'
 
 compiler_parameters:
   compile_mode: 'latency'

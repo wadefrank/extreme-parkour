@@ -260,6 +260,9 @@ calibration_parameters:
         metric: 'chebyshev'
       layerwise_search:
         metric: 'chebyshev'
+    node_config:
+      '<optimized Conv node name>':
+        input1: 'ec'
 ```
 
 默认 INT8 在该循环策略上的累计误差较大，尤其会影响 GRU hidden state 和最终
@@ -268,6 +271,12 @@ calibration_parameters:
 INT16，并同时启用 modelwise 和 layerwise Chebyshev 搜索：前者选择整网候选
 校准方案，后者再逐节点选择阈值，直接优化最大绝对误差。逐层搜索会显著增加
 编译时间。
+
+全模型 INT16 下，Conv/Gemm 的权重仍可能保持 INT8。两份正式配置根据
+`*_optimized_float_model.onnx` 和 `*_quant_info.json` 中的优化后节点名，对
+Conv 权重输入启用 `ec`（error compensate）。它通过增加补偿计算降低权重量化
+误差，因此需要重新检查 HBM 的延迟和内存。重新导出 ONNX 或升级工具链后，
+优化节点名可能变化；此时必须同步更新 `node_config`。
 
 不要把全模型 Float16 作为默认配置。S100 BPU 的 Conv、Gemm 和 GRU 主要支持
 INT8/INT16；不支持 Float16 的节点会回退到 Float32，可能牺牲实时性。必须以

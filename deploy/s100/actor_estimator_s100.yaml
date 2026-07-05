@@ -22,6 +22,29 @@ calibration_parameters:
         metric: 'chebyshev'
       layerwise_search:
         metric: 'chebyshev'
+    node_config:
+      '/estimator/estimator/estimator.0/Gemm':
+        input1: 'ec'
+      '/estimator/estimator/estimator.2/Gemm':
+        input1: 'ec'
+      '/estimator/estimator/estimator.4/Gemm':
+        input1: 'ec'
+      '/actor/history_encoder/encoder/encoder.0/Gemm':
+        input1: 'ec'
+      '/actor/history_encoder/conv_layers/conv_layers.0/Conv':
+        input1: 'ec'
+      '/actor/history_encoder/conv_layers/conv_layers.2/Conv':
+        input1: 'ec'
+      '/actor/history_encoder/linear_output/linear_output.0/Gemm':
+        input1: 'ec'
+      '/actor/actor_backbone/actor_backbone.0/Gemm':
+        input1: 'ec'
+      '/actor/actor_backbone/actor_backbone.2/Gemm':
+        input1: 'ec'
+      '/actor/actor_backbone/actor_backbone.4/Gemm':
+        input1: 'ec'
+      '/actor/actor_backbone/actor_backbone.6/Gemm':
+        input1: 'ec'
 
 compiler_parameters:
   compile_mode: 'latency'
