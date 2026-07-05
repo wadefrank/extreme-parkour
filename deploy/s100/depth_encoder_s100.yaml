@@ -20,6 +20,8 @@ calibration_parameters:
       model_output_type: 'int16'
       modelwise_search:
         metric: 'chebyshev'
+      layerwise_search:
+        metric: 'chebyshev'
 
 compiler_parameters:
   compile_mode: 'latency'

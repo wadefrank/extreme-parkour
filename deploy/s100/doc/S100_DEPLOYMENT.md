@@ -258,15 +258,23 @@ calibration_parameters:
       model_output_type: 'int16'
       modelwise_search:
         metric: 'chebyshev'
+      layerwise_search:
+        metric: 'chebyshev'
 ```
 
 默认 INT8 在该循环策略上的累计误差较大，尤其会影响 GRU hidden state 和最终
-动作，因此正式配置使用全模型 INT16，并将模型输出设为 INT16。校准搜索使用
-Chebyshev 指标，使参数选择直接关注最大绝对误差。INT16 会增加一定延迟和
-内存占用；必须以板端 replay 的动作误差和实测延迟共同验收，不能只看编译器
-报告的 cosine similarity。这里将 `quant_config` 直接内联到 YAML；该字段的
-文件路径解析方式与 `onnx_model`、`cal_data_dir` 不一致，不使用外部 JSON
-可以避免容器工作目录变化导致路径失效。
+动作。全模型 INT16 虽能显著改善精度，但本模型实测动作最大误差仍约为
+`0.15`，且 GRU hidden state 仍会略微超出 `0.05`。正式配置因此保持全模型
+INT16，并同时启用 modelwise 和 layerwise Chebyshev 搜索：前者选择整网候选
+校准方案，后者再逐节点选择阈值，直接优化最大绝对误差。逐层搜索会显著增加
+编译时间。
+
+不要把全模型 Float16 作为默认配置。S100 BPU 的 Conv、Gemm 和 GRU 主要支持
+INT8/INT16；不支持 Float16 的节点会回退到 Float32，可能牺牲实时性。必须以
+板端 replay 的动作误差和实测延迟共同验收，不能只看编译器报告的 cosine
+similarity。这里将 `quant_config` 直接内联到 YAML；该字段的文件路径解析
+方式与 `onnx_model`、`cal_data_dir` 不一致，不使用外部 JSON 可以避免容器
+工作目录变化导致路径失效。
 
 确认校准数据有效后，在容器内执行：
 

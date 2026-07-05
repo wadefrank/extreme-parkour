@@ -50,6 +50,13 @@ def main() -> None:
     )
 
     failures = []
+    sample_errors = {
+        "depth_latent": [],
+        "yaw_correction": [],
+        "h_out": [],
+        "action": [],
+        "chained_action": [],
+    }
     maxima = {
         "depth_latent": 0.0,
         "yaw_correction": 0.0,
@@ -87,12 +94,20 @@ def main() -> None:
             )
             for name, expected, actual in comparisons:
                 max_abs, _ = error(name, expected, actual)
+                sample_errors[name].append(max_abs)
                 maxima[name] = max(maxima[name], max_abs)
                 if max_abs > args.atol:
                     failures.append((path.name, name, max_abs))
 
     for name, max_abs in maxima.items():
-        print(f"{name:16s} max_abs={max_abs:.8f}")
+        values = np.asarray(sample_errors[name], dtype=np.float32)
+        failed = int(np.count_nonzero(values > args.atol))
+        print(
+            f"{name:16s} max_abs={max_abs:.8f} "
+            f"p95={np.percentile(values, 95):.8f} "
+            f"mean={np.mean(values):.8f} "
+            f"failed={failed}/{len(values)}"
+        )
     if failures:
         for sample_name, output_name, max_abs in failures[:20]:
             print(f"FAIL {sample_name}/{output_name}: {max_abs:.8f}")
