@@ -251,7 +251,15 @@ deploy/s100/actor_estimator_s100.yaml
 
 ```yaml
 march: nash-e
+calibration_parameters:
+  quant_config: './quant_config_int16.json'
 ```
+
+默认 INT8 在该循环策略上的累计误差较大，尤其会影响 GRU hidden state 和最终
+动作，因此正式配置使用全模型 INT16，并将模型输出设为 INT16。校准搜索使用
+Chebyshev 指标，使参数选择直接关注最大绝对误差。INT16 会增加一定延迟和
+内存占用；必须以板端 replay 的动作误差和实测延迟共同验收，不能只看编译器
+报告的 cosine similarity。
 
 确认校准数据有效后，在容器内执行：
 
