@@ -117,7 +117,11 @@ def main() -> None:
             )
 
             pt_action = actor_estimator(inputs["actor_obs"], pt_depth_latent)
-            ort_action = run_actor_onnx(actor_session, inputs["actor_obs"], pt_depth_latent)
+            ort_action = run_actor_onnx(
+                actor_session,
+                inputs["actor_obs"],
+                torch.from_numpy(ort_depth_latent),
+            )
 
             prefix = f"sample_{idx}"
             comparisons.extend(

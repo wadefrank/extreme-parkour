@@ -1324,6 +1324,17 @@ class LeggedRobot(BaseTask):
         dof_error = torch.sum(torch.square(self.dof_pos - self.default_dof_pos), dim=1)
         return dof_error
 
+    def _reward_feet_air_time(self):
+        """足端落地奖励: 根据本次腾空时间奖励交替步态。"""
+        first_contact = (self.feet_air_time > 0.0) & self.contact_filt
+        self.feet_air_time += self.dt
+        rew = torch.sum(
+            (self.feet_air_time - 0.5) * first_contact,
+            dim=1,
+        )
+        self.feet_air_time *= ~self.contact_filt
+        return rew
+
     def _reward_feet_stumble(self):
         """绊倒惩罚: 足部水平力远大于垂直力（撞到垂直面）"""
         rew = torch.any(torch.norm(self.contact_forces[:, self.feet_indices, :2], dim=2) >\

@@ -212,6 +212,11 @@ def get_args():
         {"name": "--use_latent", "action": "store_true", "default": False, "help": "Load depth latent when playing"},
         {"name": "--draw", "action": "store_true", "default": False, "help": "draw debug plot when playing"},
         {"name": "--save", "action": "store_true", "default": False, "help": "save data for evaluation"},
+        {"name": "--s100_calib_dir", "type": str, "default": None, "help": "Write S100 OpenExplorer calibration samples while playing"},
+        {"name": "--s100_calib_samples", "type": int, "default": 300, "help": "Maximum S100 calibration samples"},
+        {"name": "--s100_calib_warmup", "type": int, "default": 5, "help": "Depth updates to skip before S100 calibration capture"},
+        {"name": "--s100_calib_stride", "type": int, "default": 1, "help": "Record every Nth depth update for S100 calibration"},
+        {"name": "--s100_calib_overwrite", "action": "store_true", "default": False, "help": "Replace existing S100 calibration .npy files"},
 
         {"name": "--task_both", "action": "store_true", "default": False, "help": "Both climbing and hitting policies"},
         {"name": "--nodelay", "action": "store_true", "default": False, "help": "Add action delay"},

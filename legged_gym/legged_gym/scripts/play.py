@@ -31,6 +31,8 @@
 from legged_gym import LEGGED_GYM_ROOT_DIR
 import os
 import code
+from pathlib import Path
+import sys
 
 import isaacgym
 from legged_gym.envs import *
@@ -130,6 +132,27 @@ def play(args):
     if env.cfg.depth.use_camera:
         depth_encoder = ppo_runner.get_depth_encoder_inference_policy(device=env.device)
 
+    calibration_recorder = None
+    if args.s100_calib_dir is not None:
+        if not env.cfg.depth.use_camera:
+            raise ValueError("--s100_calib_dir requires --use_camera")
+        if args.use_jit:
+            raise ValueError("--s100_calib_dir is not supported with --use_jit")
+        scripts_dir = (
+            Path(LEGGED_GYM_ROOT_DIR).parent / "deploy" / "s100" / "scripts"
+        )
+        if str(scripts_dir) not in sys.path:
+            sys.path.insert(0, str(scripts_dir))
+        from calibration_data import CalibrationRecorder
+
+        calibration_recorder = CalibrationRecorder(
+            Path(args.s100_calib_dir),
+            max_samples=args.s100_calib_samples,
+            warmup_updates=args.s100_calib_warmup,
+            update_stride=args.s100_calib_stride,
+            overwrite=args.s100_calib_overwrite,
+        )
+
     actions = torch.zeros(env.num_envs, 12, device=env.device, requires_grad=False)
     infos = {}
     infos["depth"] = env.depth_buffer.clone().to(ppo_runner.device)[:, -1] if ppo_runner.if_depth else None
@@ -151,10 +174,36 @@ def play(args):
                 if infos["depth"] is not None:
                     obs_student = obs[:, :env.cfg.env.n_proprio].clone()
                     obs_student[:, 6:8] = 0
+                    h_in = depth_encoder.hidden_states
+                    if h_in is None:
+                        h_in = torch.zeros(
+                            1,
+                            env.num_envs,
+                            512,
+                            device=env.device,
+                            dtype=obs.dtype,
+                        )
+                    else:
+                        h_in = h_in.detach().clone()
                     depth_latent_and_yaw = depth_encoder(infos["depth"], obs_student)
                     depth_latent = depth_latent_and_yaw[:, :-2]
                     yaw = depth_latent_and_yaw[:, -2:]
                 obs[:, 6:8] = 1.5*yaw
+                if calibration_recorder is not None and infos["depth"] is not None:
+                    calibration_recorder.record(
+                        depth_image=infos["depth"],
+                        proprio=obs_student,
+                        h_in=h_in.permute(1, 0, 2),
+                        actor_obs=obs,
+                        depth_latent=depth_latent,
+                    )
+                    if calibration_recorder.full:
+                        print(
+                            "S100 calibration capture complete:",
+                            calibration_recorder.sample_count,
+                            "samples",
+                        )
+                        break
                     
             else:
                 depth_latent = None
@@ -175,6 +224,8 @@ def play(args):
               "actual vx", env.base_lin_vel[env.lookat_id, 0].item(), )
         
         id = env.lookat_id
+    if calibration_recorder is not None:
+        calibration_recorder.close()
         
 
 if __name__ == '__main__':

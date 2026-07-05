@@ -69,10 +69,16 @@ n_proprio + n_scan + n_priv_explicit + n_priv_latent + history_len * n_proprio
 
 ## 3. 离线导出流程
 
-在训练机上创建部署目录：
+部署目录由脚本按需创建，生成物位于：
 
 ```bash
-mkdir -p deploy/s100/export deploy/s100/calib deploy/s100/hbm deploy/s100/runtime
+mkdir -p deploy/s100/export deploy/s100/calib deploy/s100/hbm deploy/s100/replay
+```
+
+在仓库根目录执行：
+
+```bash
+python deploy/s100/scripts/export_onnx.py
 ```
 
 导出脚本应完成以下工作：
@@ -132,7 +138,20 @@ torch.onnx.export(
 
 ```bash
 cd legged_gym/legged_gym/scripts
-python play.py --exptid 020-00-distill --checkpoint 7000 --delay --use_camera --task a1
+python play.py \
+  --exptid 020-00-distill \
+  --checkpoint 7000 \
+  --delay \
+  --use_camera \
+  --task xt_dog \
+  --s100_calib_dir ../../../deploy/s100/calib \
+  --s100_calib_samples 300
+```
+
+采集后从仓库根目录验证目录对齐、shape、dtype 和有限值：
+
+```bash
+python deploy/s100/scripts/validate_calibration.py --minimum-samples 100
 ```
 
 采集内容至少包括：
@@ -150,7 +169,7 @@ python play.py --exptid 020-00-distill --checkpoint 7000 --delay --use_camera --
 导出后先用 ONNXRuntime 验证数值一致性：
 
 ```bash
-python deploy/s100/verify_onnx.py \
+python deploy/s100/scripts/verify_onnx.py \
   --checkpoint legged_gym/logs/parkour_new/020-00-distill/model_7000.pt \
   --onnx-dir deploy/s100/export
 ```
@@ -180,8 +199,8 @@ march: nash-e
 快速检查：
 
 ```bash
-hb_compile --model deploy/s100/export/depth_encoder.onnx --march nash-e
-hb_compile --model deploy/s100/export/actor_estimator.onnx --march nash-e
+hb_compile --fast-perf --model deploy/s100/export/depth_encoder.onnx --march nash-e
+hb_compile --fast-perf --model deploy/s100/export/actor_estimator.onnx --march nash-e
 ```
 
 正式编译：
@@ -281,22 +300,31 @@ target_joint_angle = default_joint_angle + action_scale * action
 - S100 ONNX 算子支持表：<https://toolchain.d-robotics.cc/guide/appendix/supported_op_list/operator_support/onnx_operator_support_j6em.html>
 - RDK S100 硬件介绍：<https://developer.d-robotics.cc/rdk_doc/rdk_s/Quick_start/hardware_introduction/rdk_s100/>
 
-## 11. 已实现与待实现文件
+## 11. 已实现文件
 
-当前已经补充了训练机侧导出与验证脚本：
-
-```text
-deploy/s100/export_onnx.py
-deploy/s100/verify_onnx.py
-deploy/s100/s100_models.py
-```
-
-后续还需要补充 S100 编译配置与板端 runtime：
+训练机侧导出、校准、编译与 replay：
 
 ```text
+deploy/s100/scripts/export_onnx.py
+deploy/s100/scripts/verify_onnx.py
+deploy/s100/scripts/calibration_data.py
+deploy/s100/scripts/validate_calibration.py
+deploy/s100/scripts/compile_s100.py
+deploy/s100/scripts/prepare_replay.py
+deploy/s100/scripts/verify_hbm.py
 deploy/s100/depth_encoder_s100.yaml
 deploy/s100/actor_estimator_s100.yaml
-deploy/s100/runtime/
 ```
 
-下一阶段建议先生成真实 ONNX，再编写 `hb_compile` YAML，确认 `.hbm` 转换和板端 `hrt_model_exec perf` 通过后再写机器人 runtime。
+板端 runtime：
+
+```text
+deploy/s100/runtime/policy_runtime.py
+deploy/s100/runtime/hbm_backend.py
+deploy/s100/runtime/depth_preprocess.py
+deploy/s100/runtime/control_loop.py
+```
+
+完整命令见 `deploy/s100/README.md`。由于机器人传感器、电机 SDK 和硬件关节
+映射不属于本仓库，实机集成仍需实现 `SensorSource`、`CommandSink`，并在
+电机驱动层独立配置 watchdog、硬限位和物理急停。
