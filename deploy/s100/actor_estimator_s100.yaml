@@ -44,7 +44,7 @@ calibration_parameters:
       '/actor/actor_backbone/actor_backbone.4/Gemm':
         input1: 'ec'
       '/actor/actor_backbone/actor_backbone.6/Gemm':
-        input1: 'ec'
+        input1: 'int16'
 
 compiler_parameters:
   compile_mode: 'latency'

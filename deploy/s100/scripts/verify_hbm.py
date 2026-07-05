@@ -30,11 +30,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def error(name: str, expected: np.ndarray, actual: np.ndarray) -> Tuple[float, float]:
+def error(
+    name: str,
+    expected: np.ndarray,
+    actual: np.ndarray,
+) -> Tuple[float, float, Tuple[int, ...]]:
     if expected.shape != actual.shape:
         raise ValueError(f"{name}: shape {actual.shape}, expected {expected.shape}")
     difference = np.abs(expected.astype(np.float32) - actual.astype(np.float32))
-    return float(np.max(difference)), float(np.mean(difference))
+    index = tuple(
+        int(value)
+        for value in np.unravel_index(int(np.argmax(difference)), difference.shape)
+    )
+    return float(np.max(difference)), float(np.mean(difference)), index
 
 
 def main() -> None:
@@ -93,11 +101,20 @@ def main() -> None:
                 ),
             )
             for name, expected, actual in comparisons:
-                max_abs, _ = error(name, expected, actual)
+                max_abs, _, index = error(name, expected, actual)
                 sample_errors[name].append(max_abs)
                 maxima[name] = max(maxima[name], max_abs)
                 if max_abs > args.atol:
-                    failures.append((path.name, name, max_abs))
+                    failures.append(
+                        (
+                            path.name,
+                            name,
+                            max_abs,
+                            index,
+                            float(expected[index]),
+                            float(actual[index]),
+                        )
+                    )
 
     for name, max_abs in maxima.items():
         values = np.asarray(sample_errors[name], dtype=np.float32)
@@ -109,8 +126,19 @@ def main() -> None:
             f"failed={failed}/{len(values)}"
         )
     if failures:
-        for sample_name, output_name, max_abs in failures[:20]:
-            print(f"FAIL {sample_name}/{output_name}: {max_abs:.8f}")
+        for (
+            sample_name,
+            output_name,
+            max_abs,
+            index,
+            expected,
+            actual,
+        ) in failures[:20]:
+            print(
+                f"FAIL {sample_name}/{output_name}{index}: "
+                f"max_abs={max_abs:.8f} "
+                f"expected={expected:.8f} actual={actual:.8f}"
+            )
         raise SystemExit(f"HBM verification failed: {len(failures)} comparisons")
     print(f"HBM verification passed: {len(replay_paths)} cases")
 
