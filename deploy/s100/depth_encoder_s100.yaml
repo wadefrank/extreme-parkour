@@ -14,7 +14,12 @@ input_parameters:
 
 calibration_parameters:
   cal_data_dir: './calib/depth_encoder/depth_image;./calib/depth_encoder/proprio;./calib/depth_encoder/h_in'
-  quant_config: './quant_config_int16.json'
+  quant_config:
+    model_config:
+      all_node_type: 'int16'
+      model_output_type: 'int16'
+      modelwise_search:
+        metric: 'chebyshev'
 
 compiler_parameters:
   compile_mode: 'latency'

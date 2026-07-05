@@ -1,9 +1,0 @@
-{
-  "model_config": {
-    "all_node_type": "int16",
-    "model_output_type": "int16",
-    "modelwise_search": {
-      "metric": "chebyshev"
-    }
-  }
-}
