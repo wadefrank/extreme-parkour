@@ -1,10 +1,10 @@
 # Run from the repository root:
 #   hb_compile -c deploy/s100/actor_estimator_s100.yaml
 model_parameters:
-  onnx_model: './deploy/s100/export/actor_estimator.onnx'
+  onnx_model: './export/actor_estimator.onnx'
   march: 'nash-e'
   output_model_file_prefix: 'actor_estimator'
-  working_dir: './deploy/s100/hbm'
+  working_dir: './hbm'
 
 input_parameters:
   input_name: 'actor_obs;depth_latent'
@@ -13,7 +13,7 @@ input_parameters:
   input_shape: '1x753;1x32'
 
 calibration_parameters:
-  cal_data_dir: './deploy/s100/calib/actor_estimator/actor_obs;./deploy/s100/calib/actor_estimator/depth_latent'
+  cal_data_dir: './calib/actor_estimator/actor_obs;./calib/actor_estimator/depth_latent'
 
 compiler_parameters:
   compile_mode: 'latency'
@@ -26,4 +26,3 @@ compiler_parameters:
   extra_params:
     input_no_padding: true
     output_no_padding: true
-

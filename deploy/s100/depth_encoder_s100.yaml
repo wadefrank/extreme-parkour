@@ -1,10 +1,10 @@
 # Run from the repository root:
 #   hb_compile -c deploy/s100/depth_encoder_s100.yaml
 model_parameters:
-  onnx_model: './deploy/s100/export/depth_encoder.onnx'
+  onnx_model: './export/depth_encoder.onnx'
   march: 'nash-e'
   output_model_file_prefix: 'depth_encoder'
-  working_dir: './deploy/s100/hbm'
+  working_dir: './hbm'
 
 input_parameters:
   input_name: 'depth_image;proprio;h_in'
@@ -13,7 +13,7 @@ input_parameters:
   input_shape: '1x58x87;1x53;1x1x512'
 
 calibration_parameters:
-  cal_data_dir: './deploy/s100/calib/depth_encoder/depth_image;./deploy/s100/calib/depth_encoder/proprio;./deploy/s100/calib/depth_encoder/h_in'
+  cal_data_dir: './calib/depth_encoder/depth_image;./calib/depth_encoder/proprio;./calib/depth_encoder/h_in'
 
 compiler_parameters:
   compile_mode: 'latency'
@@ -27,4 +27,3 @@ compiler_parameters:
   extra_params:
     input_no_padding: true
     output_no_padding: true
-

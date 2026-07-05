@@ -183,6 +183,63 @@ python deploy/s100/scripts/verify_onnx.py \
 
 ## 6. S100 编译流程
 
+本机使用以下地瓜 OpenExplorer CPU Docker 镜像：
+
+```text
+registry.d-robotics.cc/deliver/ai_toolchain_ubuntu_22_s100_s600_cpu
+```
+
+以下命令都从 Extreme Parkour 仓库根目录执行。进入容器前，确认 ONNX 已经
+导出；正式量化编译还要求 `deploy/s100/calib/` 中已有通过检查的校准数据：
+
+```bash
+test -f deploy/s100/export/depth_encoder.onnx
+test -f deploy/s100/export/actor_estimator.onnx
+python deploy/s100/scripts/validate_calibration.py --minimum-samples 100
+```
+
+### 6.1 启动 OpenExplorer 容器
+
+将当前仓库挂载到容器的 `/open_explorer `：
+
+```bash
+sudo docker run --gpus all -it \
+  -v /home/wade/wade/Code/robotics/extreme-parkour:/open_explorer \
+  registry.d-robotics.cc/deliver/ai_toolchain_ubuntu_22_s100_s600_cpu:v3.7.0
+```
+
+使用宿主机 UID/GID 可以避免生成的 `.hbm` 和中间文件归属 root。如果镜像内
+工具因权限问题无法启动，可以去掉 `--user` 和 `-e HOME=/tmp`，编译完成后
+再在宿主机修正 `deploy/s100/hbm/` 的文件权限。
+
+进入容器后先检查工具：
+
+```bash
+hb_compile --help
+```
+
+### 6.2 快速检查
+
+快速模式用于检查模型能否转换和初步评估性能，不使用正式校准配置。在容器内
+执行：
+
+```bash
+python3 deploy/s100/scripts/compile_s100.py --fast-perf
+```
+
+等价的底层命令为：
+
+```bash
+hb_compile --fast-perf \
+  --model deploy/s100/export/depth_encoder.onnx \
+  --march nash-e
+hb_compile --fast-perf \
+  --model deploy/s100/export/actor_estimator.onnx \
+  --march nash-e
+```
+
+### 6.3 正式量化编译
+
 准备两个 `hb_compile` 配置文件：
 
 ```text
@@ -196,21 +253,31 @@ deploy/s100/actor_estimator_s100.yaml
 march: nash-e
 ```
 
-快速检查：
+确认校准数据有效后，在容器内执行：
 
 ```bash
-hb_compile --fast-perf --model deploy/s100/export/depth_encoder.onnx --march nash-e
-hb_compile --fast-perf --model deploy/s100/export/actor_estimator.onnx --march nash-e
+python3 deploy/s100/scripts/validate_calibration.py --minimum-samples 100
+python3 deploy/s100/scripts/compile_s100.py
 ```
 
-正式编译：
+等价的底层命令为：
 
 ```bash
 hb_compile -c deploy/s100/depth_encoder_s100.yaml
 hb_compile -c deploy/s100/actor_estimator_s100.yaml
 ```
 
-编译后检查模型：
+预期生成：
+
+```text
+deploy/s100/hbm/depth_encoder.hbm
+deploy/s100/hbm/actor_estimator.hbm
+```
+
+### 6.4 板端模型检查
+
+退出容器后，将 `.hbm` 文件复制到 S100 板端。以下命令应在安装了
+`hrt_model_exec` 的 S100 板端运行：
 
 ```bash
 hrt_model_exec model_info --model_file deploy/s100/hbm/depth_encoder.hbm

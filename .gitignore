@@ -2,3 +2,7 @@ isaacgym*
 .ipynb_checkpoints/
 .vscode/
 *img
+
+.fast_perf/
+model_output/
+hb_compile.log
