@@ -25,9 +25,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--replay-dir", type=Path, default=DEFAULT_REPLAY_DIR)
     parser.add_argument("--samples", type=int, default=100)
     parser.add_argument("--atol", type=float, default=0.05)
+    parser.add_argument(
+        "--action-clip",
+        type=float,
+        default=4.8,
+        help="Runtime action clip used for deployment-gating comparisons.",
+    )
+    parser.add_argument(
+        "--strict-raw-action",
+        action="store_true",
+        help="Also fail when raw, pre-clipping action error exceeds --atol.",
+    )
     parser.add_argument("--priority", type=int, default=5)
     parser.add_argument("--bpu-core", type=int, default=0)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.action_clip <= 0:
+        parser.error("--action-clip must be positive")
+    return args
 
 
 def error(
@@ -58,20 +72,18 @@ def main() -> None:
     )
 
     failures = []
-    sample_errors = {
-        "depth_latent": [],
-        "yaw_correction": [],
-        "h_out": [],
-        "action": [],
-        "chained_action": [],
-    }
-    maxima = {
-        "depth_latent": 0.0,
-        "yaw_correction": 0.0,
-        "h_out": 0.0,
-        "action": 0.0,
-        "chained_action": 0.0,
-    }
+    raw_outliers = []
+    names = (
+        "depth_latent",
+        "yaw_correction",
+        "h_out",
+        "action_raw",
+        "chained_action_raw",
+        "action",
+        "chained_action",
+    )
+    sample_errors = {name: [] for name in names}
+    maxima = {name: 0.0 for name in names}
     for path in replay_paths:
         with np.load(path, allow_pickle=False) as case:
             depth_latent, yaw, h_out = backend.infer_depth(
@@ -89,41 +101,79 @@ def main() -> None:
                 chained_actor_obs,
                 depth_latent,
             )
-            comparisons: Iterable[Tuple[str, np.ndarray, np.ndarray]] = (
-                ("depth_latent", case["expected_depth_latent"], depth_latent),
-                ("yaw_correction", case["expected_yaw_correction"], yaw),
-                ("h_out", case["expected_h_out"], h_out),
-                ("action", case["expected_action"], action),
+            expected_action = case["expected_action"]
+            expected_chained_action = case["expected_chained_action"]
+            action_clip = np.float32(args.action_clip)
+            comparisons: Iterable[
+                Tuple[str, np.ndarray, np.ndarray, bool]
+            ] = (
+                ("depth_latent", case["expected_depth_latent"], depth_latent, True),
+                ("yaw_correction", case["expected_yaw_correction"], yaw, True),
+                ("h_out", case["expected_h_out"], h_out, True),
+                (
+                    "action_raw",
+                    expected_action,
+                    action,
+                    args.strict_raw_action,
+                ),
+                (
+                    "chained_action_raw",
+                    expected_chained_action,
+                    chained_action,
+                    args.strict_raw_action,
+                ),
+                (
+                    "action",
+                    np.clip(expected_action, -action_clip, action_clip),
+                    np.clip(action, -action_clip, action_clip),
+                    True,
+                ),
                 (
                     "chained_action",
-                    case["expected_chained_action"],
-                    chained_action,
+                    np.clip(expected_chained_action, -action_clip, action_clip),
+                    np.clip(chained_action, -action_clip, action_clip),
+                    True,
                 ),
             )
-            for name, expected, actual in comparisons:
+            for name, expected, actual, enforced in comparisons:
                 max_abs, _, index = error(name, expected, actual)
                 sample_errors[name].append(max_abs)
                 maxima[name] = max(maxima[name], max_abs)
                 if max_abs > args.atol:
-                    failures.append(
-                        (
-                            path.name,
-                            name,
-                            max_abs,
-                            index,
-                            float(expected[index]),
-                            float(actual[index]),
-                        )
+                    record = (
+                        path.name,
+                        name,
+                        max_abs,
+                        index,
+                        float(expected[index]),
+                        float(actual[index]),
                     )
+                    if enforced:
+                        failures.append(record)
+                    else:
+                        raw_outliers.append(record)
 
     for name, max_abs in maxima.items():
         values = np.asarray(sample_errors[name], dtype=np.float32)
-        failed = int(np.count_nonzero(values > args.atol))
+        over_atol = int(np.count_nonzero(values > args.atol))
         print(
             f"{name:16s} max_abs={max_abs:.8f} "
             f"p95={np.percentile(values, 95):.8f} "
             f"mean={np.mean(values):.8f} "
-            f"failed={failed}/{len(values)}"
+            f"over_atol={over_atol}/{len(values)}"
+        )
+    for (
+        sample_name,
+        output_name,
+        max_abs,
+        index,
+        expected,
+        actual,
+    ) in raw_outliers[:20]:
+        print(
+            f"RAW  {sample_name}/{output_name}{index}: "
+            f"max_abs={max_abs:.8f} "
+            f"expected={expected:.8f} actual={actual:.8f}"
         )
     if failures:
         for (
@@ -140,7 +190,8 @@ def main() -> None:
                 f"expected={expected:.8f} actual={actual:.8f}"
             )
         raise SystemExit(f"HBM verification failed: {len(failures)} comparisons")
-    print(f"HBM verification passed: {len(replay_paths)} cases")
+    suffix = "" if args.strict_raw_action else " (raw action is diagnostic only)"
+    print(f"HBM verification passed: {len(replay_paths)} cases{suffix}")
 
 
 if __name__ == "__main__":
