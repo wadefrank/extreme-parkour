@@ -38,13 +38,19 @@ calibration_parameters:
       '/actor/history_encoder/linear_output/linear_output.0/Gemm':
         input1: 'ec'
       '/actor/actor_backbone/actor_backbone.0/Gemm':
-        input1: 'ec'
+        qtype: 'float32'
+      '/actor/actor_backbone/priv_encoder.1/Elu':
+        qtype: 'float32'
       '/actor/actor_backbone/actor_backbone.2/Gemm':
-        input1: 'ec'
+        qtype: 'float32'
+      '/actor/actor_backbone/priv_encoder.1_1/Elu':
+        qtype: 'float32'
       '/actor/actor_backbone/actor_backbone.4/Gemm':
-        input1: 'ec'
+        qtype: 'float32'
+      '/actor/actor_backbone/priv_encoder.1_2/Elu':
+        qtype: 'float32'
       '/actor/actor_backbone/actor_backbone.6/Gemm':
-        input1: 'int16'
+        qtype: 'float32'
 
 compiler_parameters:
   compile_mode: 'latency'

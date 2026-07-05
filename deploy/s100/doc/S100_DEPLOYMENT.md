@@ -285,6 +285,13 @@ Conv 权重输入启用 `ec`（error compensate）。它通过增加补偿计算
 其差异不会传递到关节目标。需要研究量化模型本身时，可给 `verify_hbm.py`
 增加 `--strict-raw-action`，让原始动作误差也参与失败判定。
 
+实测发现，裁剪后仍有两个样本在未饱和动作维度上出现约 `0.09` 和 `0.105`
+的误差。Actor 最后一层权重单独设为 INT16 后，该节点的量化余弦达到 `1.0`，
+但板端误差没有改善，说明误差来自此前的 actor backbone 并被逐层放大。正式
+配置因此仅将四层 actor backbone 及其三层 ELU 设为 Float32；estimator 和
+history encoder 继续使用 INT16+EC。这会形成 BPU/CPU 混合 HBM，必须重新测量
+actor 延迟；如果超过控制周期预算，应转为 QAT，而不是继续扩大 Float32 范围。
+
 不要把全模型 Float16 作为默认配置。S100 BPU 的 Conv、Gemm 和 GRU 主要支持
 INT8/INT16；不支持 Float16 的节点会回退到 Float32，可能牺牲实时性。必须以
 板端 replay 的动作误差和实测延迟共同验收，不能只看编译器报告的 cosine
